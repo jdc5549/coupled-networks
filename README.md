@@ -25,11 +25,16 @@ Expects to be run from the command line from the source directory like so:
 	machine:source user$python couplednetworks.py -1 -1 -1 config.json
 
 The program takes four required arguments and one optional argument (```r_num```):
-	*	```mpid``` - MATLAB process id
-	*	```cfs_iter``` - Iteration number from MATLAB
-	*	```percent_removed``` - Percent of nodes removed for this model run.
-	*	```config``` - Name and location of the configuration file.
-	*	```r_num``` - Optional - Replicate number to use when running from an HPC. ```r_num``` determines which outage file to use.
+
+*	```mpid``` - MATLAB process id
+
+*	```cfs_iter``` - Iteration number from MATLAB
+
+*	```percent_removed``` - Percent of nodes removed for this model run.
+
+*	```config``` - Name and location of the configuration file.
+
+*	```r_num``` - Optional - Replicate number to use when running from an HPC. ```r_num``` determines which outage file to use.
 
 All arguments, aside from config.json, can be set to -1 if running without the cascading failure simulator (CFS, MATLAB model)
 
@@ -130,5 +135,7 @@ http://stackoverflow.com/questions/22367516/mex-compile-error-unknown-type-name-
 Add -std=c++11 to CXXFLAGS
 
 Also changed the following:
-#MW_SDKROOT=`$MW_SDKROOT_TMP`
-MW_SDKROOT='/Library/Developer/CommandLineTools'
+
+From: ```MW_SDKROOT='$MW_SDKROOT_TMP' ```
+
+To: ```MW_SDKROOT='/Library/Developer/CommandLineTools'```
