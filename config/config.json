@@ -1,8 +1,8 @@
 {
     "k":2.422,
     "n":2383,
-    "runs":1,
-    "p_values":2,
+    "runs":8,
+    "p_values":10,
     "p_min":0.5,
     "p_max":1.0,
     "start_with_comms":false,
@@ -44,7 +44,7 @@
     "network_type":"ER",
 
     "real":false,
-    "comm_model":"/Users/veneman/workspace/rise/src/couplednetworks.py",
+    "comm_model":"/Users/veneman/workspace/rise/coupled-networks/src/couplednetworks.py",
     "host_OS":0,
     "optimizer":"mexosi",
     "two_way":true,
