@@ -18,6 +18,8 @@ The smart grid model uses a physics-based DC power flow cascading failure simula
 
 ```cn_runner.m``` is a wraper for running from an HPC cluster or from a workstation - set by ```batch_mode```, true for cluster and false for workstation. It creates a network based on the config.json settings but the network is only used to determine which nodes to remove in the case that the ```outages_from_file``` is false or the p_value called for is not found in the ```outages_from_file``` csv. Once the nodes to remove are determined cmp_dcsimsep is called.
 
+To run 
+
 ## Running couplednetworks.py
 
 Expects to be run from the command line from the source directory like so:
@@ -82,8 +84,10 @@ All arguments, aside from config.json, can be set to -1 if running without the c
 	*	Randomly renumber the nodes on the networks, for replication this should be True but when using with the CFS it should be false.
 *	```generate_each_run```
 	*	Generate a new network for each run, True, or keep the same for all, False.
+*   ```log_level```
+    *    Sets the level of messaging for the Python logger. In order of increasing number of messages: 30 = warning, 20 = info, 10 = debug.
 *	```verbose```
-	*	If true, prints detailed messages about what's happening as the model is running
+	*	If true, prints detailed messages about what's happening in the power model as it's running
 *	```debug```
 	*	Passed as an argument to the compiled MATLAB telling it whether to print status messages to the console
 *	```output_result_to_DB```
@@ -123,9 +127,21 @@ All arguments, aside from config.json, can be set to -1 if running without the c
 *	```betweenness```
 	*	For pre-defined networks this is the node with the greatest betweenness connectivity for that network and is used as a proxy for a control center. In the comms model, if a node has no path to this node then it is considered failed. 
 
-## mexosi Build/Install notes
+## MATLAB and mexosi Build/Install notes
 
-### Mac
+The smart grid emergency control algorithm requires the use of a linear programming optimizer. mexosi is a MATLAB interface to the open source OSI/Clp/Cbc code from the [COIN-OR Project](http://www.coin-or.org).
+
+Before running with two_way or two_way_extreme enabled you'll need to build mexosi:
+
+*    From within MATLAB change directories to ```src/mexosi_v3``` then on the command line run ```make```. That should start the build and test process within ```src/make.m```.
+
+You can then run cn_runner on any computer with MATLAB and a MATLAB license. For use on an HPC or other system where MATLAB is not installed you can compile ```cn_runner.m``` for use with the [MATLAB Compiler Runtime](http://www.mathworks.com/products/compiler/mcr/). 
+Compiling ```cn_runner.m``` requires the use of the MATLAB and the MATLAB Compiler Toolbox on the computer it is built on. However, only the MATLAB Compiler Runtime is required on the computer that runs the compiled code.
+To build ```cn_runner.m``` adjust and run the bash script ```src/make_cn_runner.sh``` on your environment.
+
+### Mac build notes
+
+XCode Command Line Tools need to be installed from https://developer.apple.com/downloads/.
 
 If running 10.9 changing 10.7 to 10.9 in this link need to be made to your mexopts.sh file.
 http://www.mathworks.com/matlabcentral/answers/103904-can-i-use-xcode-5-as-my-c-or-c-compiler-in-matlab-8-1-r2013a-or-matlab-8-2-r2013b
@@ -139,3 +155,14 @@ Also changed the following:
 From: ```MW_SDKROOT='$MW_SDKROOT_TMP' ```
 
 To: ```MW_SDKROOT='/Library/Developer/CommandLineTools'```
+
+## Experiment notes
+
+The following table lists the configuration variables settings for the different experiment types and notional run time and return values for one run of the simulation.
+
+|Experiment Type|two_way|two_way_extreme|use_control|use_comm_model|Approx. run time at 0.9p (s)|GC size (%)|MW lost|Test exp. #|
+|---------------|-------|---------------|-----------|--------------|----------------------------|-----------|-------|-----------|
+|Power Grid|false|false|false|false|5|76|6790|3|
+|Ideal Smart Grid|false|false|true|false|9|84|5341|3|
+|Non-ideal Smart Grid|true|false|true|true|93|84|5835|3|
+|Vulnerable Smart Grid|true|true|true|true|210|44|18551|3|
