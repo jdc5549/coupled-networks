@@ -1,6 +1,6 @@
 #!/bin/bash
-#ROOT_DIR=/projects/CN/coupled-networks/source/compiled-matlab/
-ROOT_DIR=~/workspace/coupled-networks/source/compiled-matlab/
+#ROOT_DIR=/projects/CN/coupled-networks/source/compiled-matlab/	 # For running on the HIVE
+ROOT_DIR=~/workspace/rise/coupled-networks/src/
 
 mkdir ${ROOT_DIR}cn_runner_q
 mkdir ${ROOT_DIR}cn_runner_q/distrib
