@@ -18,6 +18,8 @@ The smart grid model uses a physics-based DC power flow cascading failure simula
 
 ```cn_runner.m``` is a wraper for running from an HPC cluster or from a workstation - set by ```batch_mode```, true for cluster and false for workstation. It creates a network based on the config.json settings but the network is only used to determine which nodes to remove in the case that the ```outages_from_file``` is false or the p_value called for is not found in the ```outages_from_file``` csv. Once the nodes to remove are determined cmp_dcsimsep is called.
 
+To run 
+
 ## Running couplednetworks.py
 
 Expects to be run from the command line from the source directory like so:
@@ -123,9 +125,21 @@ All arguments, aside from config.json, can be set to -1 if running without the c
 *	```betweenness```
 	*	For pre-defined networks this is the node with the greatest betweenness connectivity for that network and is used as a proxy for a control center. In the comms model, if a node has no path to this node then it is considered failed. 
 
-## mexosi Build/Install notes
+## MATLAB and mexosi Build/Install notes
 
-### Mac
+The smart grid emergency control algorithm requires the use of a linear programming optimizer. mexosi is a MATLAB interface to the open source OSI/Clp/Cbc code from the [COIN-OR Project](http://www.coin-or.org).
+
+Before running with two_way or two_way_extreme enabled you'll need to build mexosi:
+
+*    From within MATLAB change directories to ```src/mexosi_v3``` then on the command line run ```make```. That should start the build and test process within ```src/make.m```.
+
+You can then run cn_runner on any computer with MATLAB and a MATLAB license. For use on an HPC or other system where MATLAB is not installed you can compile ```cn_runner.m``` for use with the [MATLAB Compiler Runtime](http://www.mathworks.com/products/compiler/mcr/). 
+Compiling ```cn_runner.m``` requires the use of the MATLAB and the MATLAB Compiler Toolbox on the computer it is built on. However, only the MATLAB Compiler Runtime is required on the computer that runs the compiled code.
+To build ```cn_runner.m``` adjust and run the bash script ```src/make_cn_runner.sh``` on your environment.
+
+### Mac build notes
+
+XCode Command Line Tools need to be installed from https://developer.apple.com/downloads/.
 
 If running 10.9 changing 10.7 to 10.9 in this link need to be made to your mexopts.sh file.
 http://www.mathworks.com/matlabcentral/answers/103904-can-i-use-xcode-5-as-my-c-or-c-compiler-in-matlab-8-1-r2013a-or-matlab-8-2-r2013b
