@@ -84,8 +84,10 @@ All arguments, aside from config.json, can be set to -1 if running without the c
 	*	Randomly renumber the nodes on the networks, for replication this should be True but when using with the CFS it should be false.
 *	```generate_each_run```
 	*	Generate a new network for each run, True, or keep the same for all, False.
+*   ```log_level```
+    *    Sets the level of messaging for the Python logger. In order of increasing number of messages: 30 = warning, 20 = info, 10 = debug.
 *	```verbose```
-	*	If true, prints detailed messages about what's happening as the model is running
+	*	If true, prints detailed messages about what's happening in the power model as it's running
 *	```debug```
 	*	Passed as an argument to the compiled MATLAB telling it whether to print status messages to the console
 *	```output_result_to_DB```
@@ -96,8 +98,6 @@ All arguments, aside from config.json, can be set to -1 if running without the c
 	*	If the powerlaw module is installed this will print out the scaling exponent of the networks in the model
 *	```batch_mode```
 	*	Set to true when running from a cluster. Each run is written to its own output file. If false cfs_comms_model will send the runs to as many cores/hyperthreads on a workstation and combine the results at the end.
-*   ```log_level```
-    *    Sets the level of messaging for the Python logger. 30 = warning, 20 = info, 10 = debug.
 *	```deg_of_coupling```
 	*	The fraction of nodes connected between networks in [0,1].
 *	```hpc```
