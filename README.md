@@ -96,6 +96,8 @@ All arguments, aside from config.json, can be set to -1 if running without the c
 	*	If the powerlaw module is installed this will print out the scaling exponent of the networks in the model
 *	```batch_mode```
 	*	Set to true when running from a cluster. Each run is written to its own output file. If false cfs_comms_model will send the runs to as many cores/hyperthreads on a workstation and combine the results at the end.
+*   ```log_level```
+    *    Sets the level of messaging for the Python logger. 30 = warning, 20 = info, 10 = debug.
 *	```deg_of_coupling```
 	*	The fraction of nodes connected between networks in [0,1].
 *	```hpc```
