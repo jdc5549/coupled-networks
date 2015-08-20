@@ -155,3 +155,14 @@ Also changed the following:
 From: ```MW_SDKROOT='$MW_SDKROOT_TMP' ```
 
 To: ```MW_SDKROOT='/Library/Developer/CommandLineTools'```
+
+## Experiment notes
+
+The following table lists the configuration variables settings for the different experiment types and notional run time and return values for one run of the simulation.
+
+|Experiment Type|two_way|two_way_extreme|use_control|use_comm_model|Approx. run time at 0.9p (s)|GC size (%)|MW lost|Test exp. #|
+|---------------|-------|---------------|-----------|--------------|----------------------------|-----------|-------|-----------|
+|Power Grid|false|false|false|false|5|76|6790|3|
+|Ideal Smart Grid|false|false|true|false|9|84|5341|3|
+|Non-ideal Smart Grid|true|false|true|true|93|84|5835|3|
+|Vulnerable Smart Grid|true|true|true|true|210|44|18551|3|
