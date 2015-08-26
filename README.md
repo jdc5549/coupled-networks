@@ -1,5 +1,7 @@
 # Coupled network model notes
 
+![](images/coupled-networks.png)
+
 ## Model description
 
 ### Coupled Topology Model
