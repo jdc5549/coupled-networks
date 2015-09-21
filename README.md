@@ -1,8 +1,10 @@
-# Coupled network model notes
+# Coupled network model
 
 ![](images/coupled-networks.png)
 
 ## Model description
+
+The coupled network model contains a set of tools to simulate cascading outages on networks configured like in the figure above. All of the experiments conducted for the accompanying paper, [Reducing Cascading Failure Risk by Increasing Infrastructure Network Interdependency](http://arxiv.org/abs/1410.6836), can be reproduced with this model. The following describes the model and how to run it.
 
 ### Coupled Topology Model
 
