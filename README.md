@@ -1,8 +1,10 @@
-# Coupled network model notes
+# Coupled network model
 
 ![](images/coupled-networks.png)
 
 ## Model description
+
+The coupled network model contains a set of tools to simulate cascading outages on networks configured like in the figure above. All of the experiments conducted for the accompanying paper, [Reducing Cascading Failure Risk by Increasing Infrastructure Network Interdependency](http://arxiv.org/abs/1410.6836), can be reproduced with this model. The following describes the model and how to run it.
 
 ### Coupled Topology Model
 
@@ -144,6 +146,10 @@ To build ```cn_runner.m``` adjust and run the bash script ```src/make_cn_runner.
 ### Mac build notes
 
 XCode Command Line Tools need to be installed from https://developer.apple.com/downloads/.
+
+For OSX 10.10 and MATLAB R2015a and above no special configuration is needed. Caution, one should not run "mex -setup" with R2015a and OSX 10.10 as that will create a mexopts.sh file which is known to cause issues.
+
+For those running OSX 10.9 and below the following notes may be helpful.
 
 If running 10.9 changing 10.7 to 10.9 in this link need to be made to your mexopts.sh file.
 http://www.mathworks.com/matlabcentral/answers/103904-can-i-use-xcode-5-as-my-c-or-c-compiler-in-matlab-8-1-r2013a-or-matlab-8-2-r2013b
