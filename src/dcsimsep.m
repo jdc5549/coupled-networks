@@ -1,4 +1,4 @@
-function [is_blackout,relay_outages,MW_lost,p_out,busessep,flows,times] = dcsimsep(ps,br_outages,bus_outages,opt)  
+function [is_blackout,relay_outages,MW_lost,p_out,busessep,flows,times,power_flow] = dcsimsep(ps,br_outages,bus_outages,opt)  
 % usage: [is_blackout,relay_outages,MW_lost,p_out,busessep,flows] = dcsimsep(ps,br_outages,bus_outages,opt)  
 % is_blackout indicates whether a large separation occurs
 % branches_lost gives the set of dependant outages that occur due to relay actions
@@ -87,6 +87,7 @@ if nargout>5, flows = flow; end
 % Record the time
 t = 0;
 if nargout>6, times = t; end
+if nargout>7, power_flow = Pd0_sum; end
 t = 1;
 % Error check
 Pg = ps.gen(:,C.ge.Pg);
@@ -176,6 +177,10 @@ while t < t_max
     end
     if nargout>6
         times = [times t]; %#ok<AGROW>
+    end
+    if nargout>7
+        Pd = ps.shunt(:,C.sh.P).*ps.shunt(:,C.sh.factor);
+        power_flow = [power_flow sum(Pd)];
     end
     
     % Step 4a. Take control actions if needed.
