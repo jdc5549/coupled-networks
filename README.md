@@ -174,3 +174,13 @@ The following table lists the configuration variables settings for the different
 |Ideal Smart Grid|false|false|true|false|9|84|5341|3|
 |Non-ideal Smart Grid|true|false|true|true|93|84|5835|3|
 |Vulnerable Smart Grid|true|true|true|true|210|44|18551|3|
+
+## Other parameters
+
+*    Base case power
+    *    Pd0=24572.504MW
+    *    Calculated from 
+```
+load Polish_ps          
+Pd = sum(ps.shunt(:,C.sh.P).*ps.shunt(:,C.sh.status))
+```
