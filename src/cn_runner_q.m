@@ -69,19 +69,19 @@ if ~isdeployed && opt.verbose
     tic
 end
 
-if exist(opt.json.powerSystemsDataLocation,'file')
-    file = opt.json.powerSystemsDataLocation;
+if exist(opt.json.power_systems_data_location,'file')
+    file = opt.json.power_systems_data_location;
     %[~,ext] = strtok(opt.ps_file_location,'.');
     if regexp(file,'\.mat$')
-        load(opt.json.powerSystemsDataLocation);
+        load(opt.json.power_systems_data_location);
     elseif strcmp(ext,'\.m$')
-        ps = feval(opt.json.powerSystemsDataLocation);
+        ps = feval(opt.json.power_systems_data_location);
         ps = updateps(ps);
     else
         error('Unknown file type');
     end 
 else
-    error('No power systems data provided. Set powerSystemsDataLocation in config.json');
+    error('No power systems data provided. Set power_systems_data_location in config.json');
 end
 % Pre-process the data
 n = size(ps.bus,1);
