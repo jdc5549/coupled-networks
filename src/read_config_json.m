@@ -30,6 +30,7 @@ if exist(config_json,'file')
     opt.sim.use_control = opt.json.use_control; % use info from the comms network
     opt.sim.use_comm_model = opt.json.use_comm_model;
     opt.sim.hpc = config_file{1}.hpc;
+    opt.sim.f_over_cost = config_file{1}.lambda;
     opt.optimizer = config_file{1}.optimizer;
     % Verbose flag
     opt.verbose = opt.json.verbose;

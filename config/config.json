@@ -29,7 +29,7 @@
     "show_plot":false,
     "shuffle_networks":false,
     "generate_each_run":true,
-    "hpc":"HIVE",
+    "hpc":"$HPC",
     "output_result_to_DB":false,
     "single_net_cascade":true,
     "find_scaling_exponent":false,
@@ -44,7 +44,7 @@
     "network_type":"ER",
 
     "real":false,
-    "comm_model":"/Users/veneman/workspace/rise/coupled-networks/src/couplednetworks.py",
+    "comm_model":"RISE_WORKSPACE/coupled-networks/src/couplednetworks.py",
     "host_OS":0,
     "optimizer":"mexosi",
     "two_way":true,
@@ -55,8 +55,8 @@
     "q_values":1,
     "q_min":0.0,
     "q_max":1.0,
-    "power_systems_data_location":"/Users/veneman/workspace/coupled-networks/data/power-grid/Polish_ps.mat",
-    "python_location":"/Applications/anaconda/bin/python",
+    "power_systems_data_location":"RISE_WORKSPACE/coupled-networks/data/power-grid/Polish_ps.mat",
+    "python_location":"PYTHONPATH",
     
     "betweenness_values":{
         "network_SF_2383nodes_2.422deg_0.0rw_12345seed.edgelist":5,

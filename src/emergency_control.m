@@ -16,7 +16,7 @@ function [delta_Pd,delta_Pg,fval,output] = emergency_control(ps,measured_flow,br
 %% Prep work
 C = psconstants;
 EPS = 1e-6;
-f_over_cost = 100;
+f_over_cost = opt.sim.f_over_cost; % aka λ
 
 % check the inputs
 if nargin<3, error('need at least 3 inputs'); end

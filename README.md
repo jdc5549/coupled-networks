@@ -4,7 +4,7 @@
 
 ## Model description
 
-The coupled network model contains a set of tools to simulate cascading outages on networks configured like in the figure above. All of the experiments conducted for the accompanying paper, [Reducing Cascading Failure Risk by Increasing Infrastructure Network Interdependency](http://arxiv.org/abs/1410.6836), can be reproduced with this model. The following describes the model and how to run it.
+The coupled network model contains a set of tools to simulate cascading outages on networks configured like in the figure above. All of the experiments conducted for the accompanying paper, [Increased Infrastructure Network Interdependence Can Reduce Vulnerability](http://arxiv.org/abs/1410.6836), can be reproduced with this model. The following describes the model and how to run it.
 
 ### Coupled Topology Model
 
@@ -18,7 +18,7 @@ The two networks are connected by nodes at a rate of ```1:q```, ```q``` in ```[0
 
 ### Smart Grid Model
 
-The smart grid model uses a physics-based DC power flow cascading failure simulator (CFS), ```dcsimsep.m```, to provide a more realistic model of failures in the power grid. This mode is activated by setting ```real``` to true. Cascades occur across networks occur in a similar manner to the cooupled topological model with the differences detailed in the accompanying paper [Reducing Cascading Failure Risk by Increasing Infrastructure Network Interdependency](http://arxiv.org/abs/1410.6836). If ```real``` is true then the ```couplednetworks``` is being called by the CFS and node outages are read from a file created by the CFS model. 
+The smart grid model uses a physics-based DC power flow cascading failure simulator (CFS), ```dcsimsep.m```, to provide a more realistic model of failures in the power grid. This mode is activated by setting ```real``` to true. Cascades occur across networks occur in a similar manner to the cooupled topological model with the differences detailed in the accompanying paper [Increased Infrastructure Network Interdependence Can Reduce Vulnerability](http://arxiv.org/abs/1410.6836). If ```real``` is true then the ```couplednetworks``` is being called by the CFS and node outages are read from a file created by the CFS model. 
 
 ```cn_runner.m``` is a wraper for running from an HPC cluster or from a workstation - set by ```batch_mode```, true for cluster and false for workstation. It creates a network based on the config.json settings but the network is only used to determine which nodes to remove in the case that the ```outages_from_file``` is false or the ```p_value``` called for is not found in the ```outages_from_file``` csv. Once the nodes to remove are determined cmp_dcsimsep is called.
 
@@ -135,6 +135,8 @@ All arguments, aside from config.json, can be set to -1 if running without the c
 
 The smart grid emergency control algorithm requires the use of a linear programming optimizer. mexosi is a MATLAB interface to the open source OSI/Clp/Cbc code from the [COIN-OR Project](http://www.coin-or.org).
 
+CBC can be downloaded from [CBC Source](http://www.coin-or.org/download/source/Cbc/). Download and place Cbc-x.x.x.zip in the ```src/mexosi_v03/``` folder prior to running ```make.m```. Testing was conducted with Cbc-2.8.9.zip. 
+
 Before running with two_way or two_way_extreme enabled you'll need to build mexosi:
 
 *    From within MATLAB change directories to ```src/mexosi_v3``` then on the command line run ```make```. That should start the build and test process within ```src/make.m```.
@@ -151,11 +153,9 @@ For OSX 10.10 and MATLAB R2015a and above no special configuration is needed. Ca
 
 For those running OSX 10.9 and below the following notes may be helpful.
 
-If running 10.9 changing 10.7 to 10.9 in this link need to be made to your mexopts.sh file.
-http://www.mathworks.com/matlabcentral/answers/103904-can-i-use-xcode-5-as-my-c-or-c-compiler-in-matlab-8-1-r2013a-or-matlab-8-2-r2013b
+If running 10.9 changing 10.7 to 10.9 in [this link](http://www.mathworks.com/matlabcentral/answers/103904-can-i-use-xcode-5-as-my-c-or-c-compiler-in-matlab-8-1-r2013a-or-matlab-8-2-r2013b) need to be made to your mexopts.sh file.
 
-The following also needs to be added to mexopts.sh per:
-http://stackoverflow.com/questions/22367516/mex-compile-error-unknown-type-name-char16-t
+The following also needs to be added to mexopts.sh per [this link](http://stackoverflow.com/questions/22367516/mex-compile-error-unknown-type-name-char16-t):
 Add -std=c++11 to CXXFLAGS
 
 Also changed the following:
