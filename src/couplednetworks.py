@@ -1,27 +1,8 @@
 #!/usr/bin/env python
-
-import sys
-if sys.version_info < (2, 6):
-    raise "must use Python 2.7 or greater"
-    sys.exit(-1)
-import math
-import random
-import os
-from collections import defaultdict, deque
-import csv
-import time
-import json
-import multiprocessing as mlt
-import argparse
-import networkx as nx
-from networkx.readwrite import json_graph
-from operator import itemgetter
-import logging
-import bz2
-import codecs
-
-'''
+"""
 Coupled network cascading failure simulator.
+
+Copyright 2016 The MITRE Corporation and The University of Vermont
 
 Run like:
 python couplednetworks.py -1 -1 -1 config.json 1
@@ -34,11 +15,34 @@ The program takes four required arguments and one optional argument (```r_num```
     *   ```r_num``` - Optional - Replicate number to use when running from an HPC. ```r_num``` determines which outage file to use.
 
 All arguments, aside from config.json, can be set to -1 if running without the cascading failure simulator (CFS, MATLAB model)
-'''
+"""
 
-'''
+import argparse
+import bz2
+import codecs
+import csv
+import json
+import logging
+import math
+import multiprocessing as mlt
+import os
+import random
+import sys
+import time
+
+from collections import defaultdict, deque
+from operator import itemgetter
+
+import networkx as nx
+from networkx.readwrite import json_graph
+
+if sys.version_info < (2, 6):
+    raise "must use Python 2.7 or greater"
+    sys.exit(-1)
+
+"""
 Grab the command line arguments.
-'''
+"""
 parser = argparse.ArgumentParser(description='Coupled Network Model')
 parser.add_argument('mpid', metavar='MATLAB_PID', type=int, nargs=1, help='process ID from MATLAB, ' +
     'if running without MATLAB use -1 as a command line argument')
@@ -55,9 +59,9 @@ percent_removed = args.percent_removed[0]
 config_name = args.config_name[0]
 r_num = args.r_num
 
-'''
+"""
 Read from the configuration file.
-'''
+"""
 NUM_PROCS = mlt.cpu_count()
 config = json.load(open(config_name))
 k = config['k']  # average degree, <k>, must be a float, 4.0 is what Buldrev used
@@ -121,9 +125,9 @@ comm_model = config['comm_model']  # Used by MATLAB to find the path to this fil
 relpath = comm_model.split('src/couplednetworks.py')[0]
 
 
-'''
+"""
 Perform other setup related tasks
-'''
+"""
 # Set up logging.
 logger = logging.getLogger('couplednetworks')
 logger.setLevel(log_level)  # 10 is debug, 20 is info, 30 is warning, 40 is error
@@ -162,9 +166,7 @@ else:
 
 
 def config_type(shuffle_networks, generate_each_run):
-    '''
-    Create a configuration type indicator for the output file name.
-    '''
+    """Create a configuration type indicator for the output file name."""
     gen = "0"
     shuffle = "0"
     if generate_each_run is True:
@@ -208,11 +210,12 @@ allY = []
 
 
 def get_coupled_nodes_from_file(run, q_point, pid):
-    '''
+    """
     Read in the coupled nodes file that matches run and q_point.
+
     q is defined in the opposite direction of p so at a q of 0.99 we want to return a list of 99% of
     the nodes in a network. This is the reason for taking 1-q_point.
-    '''
+    """
     coupled_nodes = []
     if pid == -1:
         random.seed(r_num)  # Set the seed to the run number to get consistent random draws each time that run is done
@@ -268,9 +271,9 @@ else:
 
 
 def remove_links(network_a, network_b, swap_networks, iteration):
-    '''
-    Removes links in network_b per the process given in
-    Buldyrev 2010, Catastrophic cascade of failures in interdependent networks.
+    """
+    Remove links in network_b per the process given in Buldyrev 2010, Catastrophic cascade of failures in interdependent networks.
+
     "Each node in network A depends on one and only one node in network B, and
     vice versa. One node from network A is removed ('attack'). b, Stage 1: a
     dependent node in network B is also eliminated and network A breaks into
@@ -284,7 +287,7 @@ def remove_links(network_a, network_b, swap_networks, iteration):
     connected b2-cluster/a3-cluster pair is a mutually connected cluster and the
     clusters b24 and a34, which are the largest among them, constitute the giant
     mutually connected component."
-    '''
+    """
     # Get the connected components of each network.
     gmcca = sorted(nx.connected_components(network_a), key=len, reverse=True)
     gmccb = sorted(nx.connected_components(network_b), key=len, reverse=True)
@@ -356,9 +359,7 @@ def remove_links(network_a, network_b, swap_networks, iteration):
 
 
 def attack_network(run, networks):
-    '''
-    Create the networks and run the attack and cascade sequence on them.
-    '''
+    """Create the networks and run the attack and cascade sequence on them."""
     logger.debug("\t\tRun number " + str(run) + " of " + str(runs) + ", iteration: " + str(cfs_iter))
 
     runstart = time.time()
@@ -1005,7 +1006,7 @@ def main():
         runstart = time.time()
         pool = mlt.Pool()
         for i in range(0, runs, 1):
-            pool.apply_async(attack_network, args=(i, networks, ), callback = log_result)
+            pool.apply_async(attack_network, args=(i, networks, ), callback=log_result)
 
         pool.close()
         pool.join()
@@ -1043,9 +1044,7 @@ def main():
 
 
 def write_output(x, average, run):
-    '''
-    Writes the output to file.
-    '''
+    """Write the output to file."""
     if log_all_p_values is False and run != runs:
         return
 

@@ -7,6 +7,7 @@ function [is_blackout,GC_size,MW_lost] = cn_runner(exp_id, config_json, exps_to_
 %  exps_to_run - headerless csv file with list of experiment numbers to run
 %  starting_run - run number to start with for multi-submission experiments
 %   
+% Copyright 2016 The MITRE Corporation and The University of Vermont
 
 warning off %#ok<*WNOFF>
 C = psconstants; % get constants that help us to find the data

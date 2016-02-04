@@ -1,4 +1,4 @@
-Copyright 2015 The MITRE Corporation
+Copyright 2016 The MITRE Corporation
   and The University of Vermont
 
 Licensed under the Apache License, Version 2.0 (the "License");
