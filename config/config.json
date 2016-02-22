@@ -9,6 +9,7 @@
     "gc_threshold":0.5,
     "grid_gc_threshold":0.0,
     "output_gc_size":false,
+    "lambda":100,
 
     "outages_from_file":true,
     "num_outages_in_file":100,

@@ -9,6 +9,7 @@
     "gc_threshold":0.0,
     "grid_gc_threshold":0.0,
     "output_gc_size":false,
+    "lambda":100,
 
     "outages_from_file":true,
     "num_outages_in_file":100,
@@ -39,8 +40,8 @@
     "debug":false,
 
     "network_from_file":true,
-    "comm_network_location":"../data/networks/generated/network_Polish_2383nodes_2.422deg_0.1rw_12345seed.edgelist",
-    "power_network_location":"../data/networks/generated/network_Polish_2383nodes_2.422deg_0.0rw_12345seed.edgelist",
+    "comm_network_location":"data/networks/generated/network_Polish_2383nodes_2.422deg_0.1rw_12345seed.edgelist",
+    "power_network_location":"data/networks/generated/network_Polish_2383nodes_2.422deg_0.0rw_12345seed.edgelist",
     "network_type":"Power_GC_q-sweep_non-Ideal_p0.95",
 
     "real":true,
