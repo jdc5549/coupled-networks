@@ -20,9 +20,7 @@ The two networks are connected by nodes at a rate of ```1:q```, ```q``` in ```[0
 
 The smart grid model uses a physics-based DC power flow cascading failure simulator (CFS), ```dcsimsep.m```, to provide a more realistic model of failures in the power grid. This mode is activated by setting ```real``` to true. Cascades occur across networks occur in a similar manner to the cooupled topological model with the differences detailed in the accompanying paper [Increased Infrastructure Network Interdependence Can Reduce Vulnerability](http://arxiv.org/abs/1410.6836). If ```real``` is true then the ```couplednetworks``` is being called by the CFS and node outages are read from a file created by the CFS model. 
 
-```cn_runner.m``` is a wraper for running from an HPC cluster or from a workstation - set by ```batch_mode```, true for cluster and false for workstation. It creates a network based on the config.json settings but the network is only used to determine which nodes to remove in the case that the ```outages_from_file``` is false or the ```p_value``` called for is not found in the ```outages_from_file``` csv. Once the nodes to remove are determined cmp_dcsimsep is called.
-
-To run 
+```cn_runner.m``` is a wrapper for running from an HPC cluster or from a workstation - set by ```batch_mode```, true for cluster and false for workstation. It creates a network based on the config.json settings but the network is only used to determine which nodes to remove in the case that the ```outages_from_file``` is false or the ```p_value``` called for is not found in the ```outages_from_file``` csv. Once the nodes to remove are determined ```cmp_dcsimsep``` is called.
 
 ## Running couplednetworks.py
 
@@ -30,11 +28,11 @@ Expects to be run from the command line from the source directory like so:
 
 	machine:source user$python couplednetworks.py -1 -1 -1 config.json
 
-The program takes four required arguments and one optional argument (```r_num```):
+The program takes four required arguments and one optional argument:
 
-*	```mpid``` - MATLAB process id
+*	```mpid``` - MATLAB process id.
 
-*	```cfs_iter``` - Iteration number from MATLAB
+*	```cfs_iter``` - Iteration number from MATLAB.
 
 *	```percent_removed``` - Percent of nodes removed for this model run.
 
@@ -49,21 +47,23 @@ All arguments, aside from config.json, can be set to -1 if running without the c
 *	```k```
 	*	Average degree as a float. Used to determine ep, probability of edge creation, a parameter to generate Erdos-Renyi random graphs. ep = k / n-1. This is cast to an integer for and must be even RR graphs. Ignored if using networks from file.
 *	```n```
-	*	Number of nodes. 2383 for Polish grid.
+	*	Number of nodes. n = 2383 for the Polish grid that was used as a baseline transmission grid.
 *	```runs```
 	*	Number of times to run the model if not running in batch mode. For batch mode set this to 1.
 *	```p_values, p_min, p_max```
 	*	Number of distinct percent-removals, ```p_values```, to do across ```[p_min p_max]``` in each run. 
+*	```real```
+	*	Set to true if using a CFS model for the power grid. If false then the power grid is only modeled topologically, not physically.
 *	```start_with_comms```
 	*	Starts the attack on the communication network, network A, instead of the grid, network B.
 *	```gc_threshold```
-	*	The fraction of the number of components in the giant component of the communications network, network A, under which failure is declared. For replication of Bulydrev this should be 0 which gets changed to a threshold of 1 node. 
+	*	The fraction of the number of components in the giant component of the communications network, network A, under which failure is declared. For replication of the work by Bulydrev et al. this should be 0.
 *	```grid_gc_threshold```
 	*	The fraction of the number of components in the giant component in the grid, network B, under which blackout is declared.
 *	```output_gc_size```
-	*	Instead of checking for failure against a threshold the size of the giant component can be output if this parameter is true.
+	*	When running without the CFS (i.e. ```real``` is false) the size of the giant component will be output if this is true. Otherwise the output files will only tell you whether the GC size was larger than the threshold. The size of the giant component is always written out when running with the CFS.
 *	```outages_from_file, min_outage_point, max_outage_point, num_outages_in_file```
-	*	If true, reads the outages from coupled-networks/data/node-removals/ instead generating them as the model runs. min_outage_point, max_outage_point, num_outages_in_file determine which outage file to read from.
+	*	If ```outages_from_file``` is true, reads the outages from coupled-networks/data/node-removals/ instead generating them as the model runs. The ```min_outage_point```, ```max_outage_point```, ```num_outages_in_file``` determine which outage file to read from.
 *	```inverse_step_size```
 	*	1/(p2-p1) where p is the percent of nodes/branches removed. If the step size is 0.005 inverse_step_size is 200. Used to find the proper node/branch outage file.
 *	```num_outages_in_coupling_file, min_coupling_point, max_coupling_point, coupling_from_file, inverse_step_size_for_coupling```
@@ -73,35 +73,35 @@ All arguments, aside from config.json, can be set to -1 if running without the c
 *	```output_removed_nodes```
 	*	When removing links, returns a list of nodes in networkB but not in networkA. When running with CFS, i.e. real == true, this needs to be true as well.
 *	```output_removed_nodes_to_DB```
-	*	Writes the configuration (config.json), the original networks and the status of the networks at every step of each pValue of each run to a database. Requires pymongo as an import a MongoDB on the system the model is running on and mongod running.
+	*	Writes the configuration (config.json), the original networks, and the status of the networks at every step of each pValue of each run to a database. Requires pymongo as an import, MongoDB installed on the system the model is running on, and the mongod daemon running.
 *	```log_all_p_values```
 	*	Writes the output to file at the end of each run instead of just at the end of all runs.
 *	```write_networks_out```
-	*	Specify either "edgelist" or "json" to writes the networks to file. This can be useful to check the networks that are generated if not getting them from file. However, it will produce a lot of files depending on how many runs are being done.
+	*	Specify either "edgelist" or "json" to write the networks to file. This can be useful to check the networks that are generated if not getting them from file. However, it will produce a lot of files depending on how many runs are being done.
 *	```show_plot```
-	*	Produce a plot of the output at the end. Requires matplotlib as an import. Set to false if running in batch mode to safe memory.
+	*	Produce a plot of the output at the end. Requires matplotlib as an import. Set to false if running in batch mode to save memory.
 *	```network_type```
-	*	Sets the types of networks to use. If networks are being generated this must be either 'SF' (scale-free), 'RR' (random regular), 'ER' (Erdos-Renyi), 'CFS-SW' (cascading failure simulator/small-world). CFS-SW uses the topology of the Polish grid as the power network and some rewiring of that (set by ```random_rewire_prob```) for the communicaion network. If networks are being read from file then this can be anything and gets placed in the name of the output files.
+	*	Sets the types of networks to use. If networks are being generated this must be either 'SF' (scale-free), 'RR' (random regular), 'ER' (Erdos-Renyi), 'CFS-SW' (cascading failure simulator/small-world). CFS-SW uses the topology of the Polish grid as the power network and some rewiring of that (set by ```random_rewire_prob```) for the communication network. If networks are being read from file then this can be anything and gets placed in the name of the output files.
 *	```random_rewire_prob```
-	*	Used to rewire generated scale-free and CFS-SW networks. If ```random_rewire_prob``` is -1, base the comms network on a configuration model otherwise the comms will be randomly rewired with this probability. For scale free replication lambda/gamma = ~3 when ```random_rewire_prob``` = 0.16 and ~2.7 when ```random_rewire_prob``` = 0.31 and ~2.3 with rewireProb = 0.57
+	*	Used to rewire generated scale-free and CFS-SW networks. If ```random_rewire_prob``` is -1, base the comms network on a configuration model otherwise the comms will be randomly rewired with this probability. For scale-free networks in a Bulydrev-type replication, λ = ~3 when ```random_rewire_prob``` = 0.16, λ = ~2.7 when ```random_rewire_prob``` = 0.31, and λ = ~2.3 with rewireProb = 0.57.
 *	```shuffle_networks```
-	*	Randomly renumber the nodes on the networks, for replication this should be True but when using with the CFS it should be false.
+	*	Randomly renumber the nodes on the networks. For a replication of a Bulydrev type run this should be True. When using with the CFS it should be false.
 *	```generate_each_run```
-	*	Generate a new network for each run, True, or keep the same for all, False.
+	*	If true, generate a new network for each run. If false, keep the same network for all runs.
 *   ```log_level```
     *    Sets the level of messaging for the Python logger. In order of increasing number of messages: 30 = warning, 20 = info, 10 = debug.
 *	```verbose```
-	*	If true, prints detailed messages about what's happening in the power model as it's running
+	*	If true, prints detailed messages about what is happening in the power model as it is running.
 *	```debug```
-	*	Passed as an argument to the compiled MATLAB telling it whether to print status messages to the console
+	*	Passed as an argument to the compiled MATLAB telling it whether to print status messages to the console.
 *	```output_result_to_DB```
-	*	Sends the run results to a database
+	*	Sends the run results to a database.
 *	```single_net_cascade```
-	*	Only applicable in singlenetwork.py. Determines whether outages lead to cascades
+	*	Only applicable in singlenetwork.py. Determines whether outages lead to cascades.
 *	```find_scaling_exponent```
-	*	If the powerlaw module is installed this will print out the scaling exponent of the networks in the model
+	*	If the powerlaw module is installed this will print out the scaling exponent of the networks in the model.
 *	```batch_mode```
-	*	Set to true when running from a cluster. Each run is written to its own output file. If false cfs_comms_model will send the runs to as many cores/hyperthreads on a workstation and combine the results at the end.
+	*	Set to true when running from a cluster. Each run is written to its own output file. If false, cfs_comms_model will send the runs to as many cores/hyperthreads are found on the workstation the simulation is running on and combine the results at the end.
 *	```deg_of_coupling```
 	*	The fraction of nodes connected between networks in [0,1].
 *	```hpc```
@@ -112,18 +112,16 @@ All arguments, aside from config.json, can be set to -1 if running without the c
 	*	Relative path (from coupled-networks) to where the communication network file is located.
 *	```power_network_location```
 	*	Relative path (from coupled-networks) to where the power grid file is located.
-*	```real```
-	*	Set to true if using a CFS model for the power grid. If false then the power grid is only modeled topologically, not physically.
 *	```comm_model```
 	*	Used by MATLAB to find the comms model on the machine the model is running on.
 *	```host_OS```
-	*	For the compiled MATLAB this determines where to find cmp_dcsimsep, 0 for Mac, 1 for Linux
+	*	Used by MATLAB, this determines where to find ```cmp_dcsimse```p, 0 for Mac, 1 for Linux.
 *	```optimizer```
-	*	Tells cmp_dcsimsep which optimizer to use. Options are 'cplex' and 'mexosi'.
+	*	Tells ```cmp_dcsimsep``` which optimizer to use. Options are ```cplex``` and ```mexosi```.
 *	```two_way```
-	*	Enables the two-way, beneficial, coupling mode in dcsimsep.
+	*	Enables the two-way, beneficial, coupling mode in ```dcsimsep```.
 *	```two_way_extreme```
-	*	Enables the two-way extreme, vulnerable, coupling mode in dcsimsep. In this mode comm outages connected to generators cause the generators to fail.
+	*	Enables the two-way extreme, vulnerable, coupling mode in ```dcsimsep```. In this mode, comm outages connected to generators cause the generators to fail.
 *	```power_systems_data_location```
 	*	Sets the .mat file to use as input for the power grid.
 *	```python_location```
