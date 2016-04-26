@@ -239,7 +239,7 @@ end
 
 % Write the header
 fileID = fopen(output_filename,'w');
-fprintf(fileID,'%s\r\n','p,Pinf,GC_size,MW_lost');
+fprintf(fileID,'%s\r\n','q,Pinf,GC_size,MW_lost');
 fclose(fileID);
 
 % Write the data
