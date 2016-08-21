@@ -223,11 +223,10 @@ def get_coupled_nodes_from_file(run, q_point, pid):
         comm_file_name = relpath + 'data/coupled-nodes/coupled_node_' + str(run) + '.csv.bz2'
         p_calc = num_couplings_in_file - inverse_step_size_for_coupling * (q_point - min_coupling_point)
         p_column = int(round(p_calc)) - 1  # 100-100*(0.99-0.01) - 1 = 1, round first otherwise you can get unexpected results
-        # print "q_calc " + str(p_calc) + ", q_column " + str(p_column) + " from file: " + comm_file_name
         if p_column > num_couplings_in_file or p_column == 100 or n != 2383 or p_column == 0:
             random_removal_fraction = 1 - q_point    # Fraction of nodes to remove
             num_coupled_nodes = int(math.floor(random_removal_fraction * n))
-            logger.info("No coupling found for q_point " + str(q_point) + " at column " + str(p_column) +
+            logger.warning("No coupling found for q_point " + str(q_point) + " at column " + str(p_column) +
             " for " + str(n) + " nodes, creating coupling instead of " + str(num_coupled_nodes) + " coupled nodes")
             coupled_nodes = random.sample(nodes, num_coupled_nodes)
             # logger.info("size coupled_nodes list " + str(len(coupled_nodes)) + " for run " + str(run) + ", q_point " + str(q_point))
@@ -244,8 +243,8 @@ def get_coupled_nodes_from_file(run, q_point, pid):
                     coupled_nodes.append(item)
             logger.debug("size coupled_nodes list " + str(len(coupled_nodes)) + " for run " + str(run) + ", q_point " + str(1 - q_point) + ", p_column " + str(p_column))
         except Exception, e:
-                    print "Coupled node outage read error: " + str(e)
-                    raise
+            print "Coupled node outage read error: " + str(e)
+            raise
         # print "coupled_nodes " + str(coupled_nodes) + " run " + str(run) + ", q_point " + str(q_point)
     else:  # getting called by something else so read the coupled node file created by the other process
         coupled_node_filename = '/tmp/coupled_nodes_' + str(pid) + '.csv'
@@ -261,8 +260,10 @@ def get_coupled_nodes_from_file(run, q_point, pid):
     return coupled_nodes
 
 coupled_nodes = []
-if coupling_from_file is True and real is False:
+if coupling_from_file is True and real is False and batch_mode is True:
     coupled_nodes = get_coupled_nodes_from_file(r_num, deg_of_coupling, -1)
+elif coupling_from_file is True and real is False and batch_mode is False:
+    coupled_nodes = get_coupled_nodes_from_file(r_num + 1, deg_of_coupling, -1)
 elif coupling_from_file is False and real is False:
     number_coupled = int(math.floor(deg_of_coupling * n))
     coupled_nodes = random.sample(nodes, number_coupled)  # nodes that are connected between networks
@@ -391,11 +392,17 @@ def attack_network(run, networks):
 
     if real is False:  # Capture the result if not running from MATLAB
         d = defaultdict(list)
+        p_half = defaultdict(int)
         for key, value in y:
             d[key].append(value)
+            if value > 0.5:
+                p_half[key] += 1
+            else:
+                p_half[key] += 0
         average = [float(sum(value)) / len(value) for key, value in d.items()]
+        average_p_half = [float(value) / runs for key, value in p_half.items()]
         x = [key for key, value in d.items()]
-        write_output(x, average, run)
+        write_output(x, average, average_p_half, run)
 
     logger.debug("Comms run time was " + str(time.time() - runstart) + " seconds")
     return y
@@ -1011,12 +1018,17 @@ def main():
         pool.close()
         pool.join()
         d = defaultdict(list)
+        p_half = defaultdict(int)
         for key, value in allY:
             d[key].append(value)
+            if value > 0.5:
+                p_half[key] += 1
+            else:
+                p_half[key] += 0
         average = [float(sum(value)) / len(value) for key, value in d.items()]
+        average_p_half = [float(value) / runs for key, value in p_half.items()]
         x = [key for key, value in d.items()]
-
-        write_output(x, average, runs)
+        write_output(x, average, average_p_half, runs)
 
         print "Run time was " + str(time.time() - runstart) + " seconds"
     elif real is False and batch_mode is True:
@@ -1024,12 +1036,18 @@ def main():
         y = attack_network(r_num, networks)
 
         d = defaultdict(list)
+        p_half = defaultdict(int)
         for key, value in y:
             d[key].append(value)
+            if value > 0.5:
+                p_half[key] += 1
+            else:
+                p_half[key] += 0
         average = [float(sum(value)) / len(value) for key, value in d.items()]
+        average_p_half = [float(value) / runs for key, value in p_half.items()]
         x = [key for key, value in d.items()]
 
-        write_output(x, average, runs)
+        write_output(x, average, average_p_half, runs)
 
         print "Run time was " + str(time.time() - runstart) + " seconds"
 
@@ -1043,7 +1061,7 @@ def main():
             plt.show()
 
 
-def write_output(x, average, run):
+def write_output(x, average, average_p_half, run):
     """Write the output to file."""
     if log_all_p_values is False and run != runs:
         return
@@ -1052,6 +1070,7 @@ def write_output(x, average, run):
     output = []
     output.append(x)
     output.append(average)
+    output.append(average_p_half)
     output = zip(* output)
     output.sort(key=itemgetter(0))  # sort on x (0)
 
@@ -1069,7 +1088,7 @@ def write_output(x, average, run):
     complete_name = os.path.abspath(path)
     with open(complete_name, 'wb') as f:
         writer = csv.writer(f)
-        writer.writerow(['p', 'Pinf'])
+        writer.writerow(['p', 'Pinf', 'p0.5'])
         for row in output:
             writer.writerow(row)
 
