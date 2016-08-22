@@ -70,6 +70,9 @@ runs = config['runs']  # number of runs to make
 p_values = config['p_values']    # how many increments of p
 p_min = config['p_min']
 p_max = config['p_max']
+q_values = config['q_values']
+q_min = config['q_min']
+q_max = config['q_max']
 start_with_comms = config['start_with_comms']
 # the fraction of the number of components in the giant component under which failure is declared
 # for replication this should be 0 which gets changed to a threshold of 1 node
@@ -86,6 +89,7 @@ min_coupling_point = config['min_coupling_point']
 deg_of_coupling = config['deg_of_coupling']  # Fraction of nodes that are coupled between networks. Used if coupling_from_file is false.
 inverse_step_size = config['inverse_step_size']
 inverse_step_size_for_coupling = config['inverse_step_size_for_coupling']
+select_each_replicate = config['select_each_replicate']
 
 targeted = config['targeted']  # If this is true the highest degree nodes are removed first
 output_removed_nodes_to_DB = config['output_removed_nodes_to_DB']  # For visualization, this writes a csv file with all the node removals at each p-value
@@ -140,6 +144,7 @@ ep = k / (n - 1)  # probability for edge creation
 # print "Probability for edge creation: " + str(ep)
 nodes = range(1, n + 1, 1)
 p_range = p_max - p_min
+q_range = q_max - q_min
 home = os.path.expanduser("~")
 threshold = gc_threshold * n
 if int(threshold) == 0:
@@ -179,6 +184,7 @@ def config_type(shuffle_networks, generate_each_run):
 network_label = (network_type + '{nodes}nodes_{rw}rw_{thresh}thresh_{q}q_{sruns}Avg_GCThresh{gc_threshold}_GridGCThresh{grid_gc_threshold}'.format(
     nodes=n, sruns=runs, rw=random_rewire_prob, thresh=threshold, q=deg_of_coupling, gc_threshold=gc_threshold, grid_gc_threshold=grid_gc_threshold) +
     '_Config_%s' % config_type(shuffle_networks, generate_each_run) + "_")  # this gets put in the file names
+# network_label = (network_type + '{pmin}p_'.format(pmin=p_min)) # TODO alternative labeling
 
 if verbose is True:
     logger.info("Network type: " + network_label + ", comms threshold: " + str(gc_threshold) +
@@ -223,12 +229,15 @@ def get_coupled_nodes_from_file(run, q_point, pid):
         comm_file_name = relpath + 'data/coupled-nodes/coupled_node_' + str(run) + '.csv.bz2'
         p_calc = num_couplings_in_file - inverse_step_size_for_coupling * (q_point - min_coupling_point)
         p_column = int(round(p_calc)) - 1  # 100-100*(0.99-0.01) - 1 = 1, round first otherwise you can get unexpected results
-        if p_column > num_couplings_in_file or p_column == 100 or n != 2383 or p_column == 0:
+        if n == 2383 and p_column == 0:
+            return []
+        if n == 2383 and p_column == 100:
+            return range(1,2384,1)
+        if p_column > num_couplings_in_file or n != 2383:
             random_removal_fraction = 1 - q_point    # Fraction of nodes to remove
             num_coupled_nodes = int(math.floor(random_removal_fraction * n))
             logger.warning("No coupling found for q_point " + str(q_point) + " at column " + str(p_column) +
             " for " + str(n) + " nodes, creating coupling instead of " + str(num_coupled_nodes) + " coupled nodes")
-            coupled_nodes = random.sample(nodes, num_coupled_nodes)
             # logger.info("size coupled_nodes list " + str(len(coupled_nodes)) + " for run " + str(run) + ", q_point " + str(q_point))
             return coupled_nodes
         try:
@@ -245,7 +254,6 @@ def get_coupled_nodes_from_file(run, q_point, pid):
         except Exception, e:
             print "Coupled node outage read error: " + str(e)
             raise
-        # print "coupled_nodes " + str(coupled_nodes) + " run " + str(run) + ", q_point " + str(q_point)
     else:  # getting called by something else so read the coupled node file created by the other process
         coupled_node_filename = '/tmp/coupled_nodes_' + str(pid) + '.csv'
         try:
@@ -259,16 +267,22 @@ def get_coupled_nodes_from_file(run, q_point, pid):
                     raise
     return coupled_nodes
 
-coupled_nodes = []
-if coupling_from_file is True and real is False and batch_mode is True:
-    coupled_nodes = get_coupled_nodes_from_file(r_num, deg_of_coupling, -1)
-elif coupling_from_file is True and real is False and batch_mode is False:
-    coupled_nodes = get_coupled_nodes_from_file(r_num + 1, deg_of_coupling, -1)
-elif coupling_from_file is False and real is False:
-    number_coupled = int(math.floor(deg_of_coupling * n))
-    coupled_nodes = random.sample(nodes, number_coupled)  # nodes that are connected between networks
-else:
-    coupled_nodes = get_coupled_nodes_from_file(-1, -1, mpid)  # if called by CFS read coupled nodes from file
+def find_coupled_nodes(replication,q_point):
+    """Parses the configuration to figure out how to get the coupled nodes."""
+    found_coupled_nodes = []
+    if coupling_from_file is True and real is False and batch_mode is True:
+        found_coupled_nodes = get_coupled_nodes_from_file(r_num, deg_of_coupling, -1)
+    elif coupling_from_file is True and real is False and batch_mode is False and replication == -1: # for running on a workstation vs running on a cluster
+        found_coupled_nodes = get_coupled_nodes_from_file(r_num + 1, deg_of_coupling, -1)
+    elif coupling_from_file is True and real is False and batch_mode is False and replication != -1:
+        found_coupled_nodes = get_coupled_nodes_from_file(replication + 1, q_point, -1)
+    elif coupling_from_file is False and real is False:
+        number_coupled = int(math.floor(deg_of_coupling * n))
+        found_coupled_nodes = random.sample(nodes, number_coupled)  # nodes that are connected between networks
+    else:
+        found_coupled_nodes = get_coupled_nodes_from_file(-1, -1, mpid)  # if called by the CFS Matlab model read coupled nodes from file
+    return found_coupled_nodes
+coupled_nodes = find_coupled_nodes(-1,-1)
 
 
 def remove_links(network_a, network_b, swap_networks, iteration):
@@ -364,7 +378,7 @@ def attack_network(run, networks):
     logger.debug("\t\tRun number " + str(run) + " of " + str(runs) + ", iteration: " + str(cfs_iter))
 
     runstart = time.time()
-    y = []
+    y = [] # holds the result
 
     # Create the networks
     if generate_each_run is True:
@@ -527,7 +541,14 @@ def check_for_failure(network_a, network_b, dbh, run, y):
             except:
                 print "CSV writer error"
     else:  # If real is false then only simulate topological cascades.
-        for i in range(0, p_values + 1, 1):
+        if p_values > 1 and q_values > 1:
+            sys.stderr.write("Either p or q must equal 1 since only p or q sweep can be done at once. Configuration adjustment required to run.")
+            sys.exit(-1)
+        if q_values > 1 and select_each_replicate is True:
+            sys.stderr.write("Select each replicate is only supported when q_values == 1.")
+            sys.exit(-1)
+        range_values = max(p_values,q_values)
+        for i in range(0, range_values + 1, 1):
             # innerrunstart = time.time()
             # copy the networks so that all node removals are done on the same network layout
             # new network layouts will be generated for each run if generate_each_run is true
@@ -535,11 +556,22 @@ def check_for_failure(network_a, network_b, dbh, run, y):
             network_b_copy = network_b.copy()
             coupled_nodes_attacked = []
 
-            p = i / float(p_values)
-            p = p / (1 / float(p_range)) + p_min
+            if q_values > 1:
+                q_point = i / float(q_values);
+                q_point = q_point / (1 / float(q_range)) + q_min  # 0.1/(1/1.0) + 0.0 = 0.1         
+                coupled_nodes = find_coupled_nodes(i,q_point)
+                p = p_min
+            else:
+                p = i / float(p_values)
+                p = p / (1 / float(p_range)) + p_min
+            if select_each_replicate is True:
+                if q_min != deg_of_coupling:
+                    logger.warning("deg_of_coupling not equal to q_min. Using deg_of_coupling for q_point.")
+                coupled_nodes = find_coupled_nodes(i,deg_of_coupling)
+
+
             random_removal_fraction = 1 - p  # Fraction of nodes to remove
             num_nodes_attacked = int(math.floor(random_removal_fraction * n))
-            # print "p " + str(p) + ", num_nodes_attacked " + str(num_nodes_attacked)
 
             if targeted is False and outages_from_file is False:
                 nodes_attacked = random.sample(network_a.nodes(), num_nodes_attacked)
@@ -675,19 +707,29 @@ def check_for_failure(network_a, network_b, dbh, run, y):
 
             result = 1  # for passing to write_result
 
-            if output_gc_size is True:
-                y.append([p, (float(giant_comp_size) / n)])
-            else:
-                if giant_comp_size > threshold:
-                    y.append([p, 1])
-                    # y=[p,1]
+            if p_values > 1:
+                if output_gc_size is True:
+                    y.append([p, (float(giant_comp_size) / n)])
                 else:
-                    result = 0
-                    y.append([p, 0])
-                    # y=[p,0]
+                    if giant_comp_size > threshold:
+                        y.append([p, 1])
+                    else:
+                        result = 0
+                        y.append([p, 0])
+                if output_result_to_DB is True:
+                    write_result(run, p, nodes_attacked, initial_nodes_attacked, result, dbh)
+            else: # TODO, the q-sweep capability should be streamlined
+                if output_gc_size is True:
+                    y.append([q_point, (float(giant_comp_size) / n)])
+                else:
+                    if giant_comp_size > threshold:
+                        y.append([q_point, 1])
+                    else:
+                        result = 0
+                        y.append([q_point, 0])
 
-            if output_result_to_DB is True:
-                write_result(run, p, nodes_attacked, initial_nodes_attacked, result, dbh)
+                if output_result_to_DB is True:
+                    write_result(run, q_point, nodes_attacked, initial_nodes_attacked, result, dbh)
             # print "y is: " + str(y)
             # print "Inner run time was " + str(time.time() - innerrunstart) + " seconds"
 
@@ -1009,7 +1051,7 @@ def main():
         networks = manager.list(create_networks(network_type))
     else:
         networks = create_networks(network_type)
-    if real is False and batch_mode is False:
+    if real is False and batch_mode is False: # running from a workstation
         runstart = time.time()
         pool = mlt.Pool()
         for i in range(0, runs, 1):
@@ -1031,7 +1073,7 @@ def main():
         write_output(x, average, average_p_half, runs)
 
         print "Run time was " + str(time.time() - runstart) + " seconds"
-    elif real is False and batch_mode is True:
+    elif real is False and batch_mode is True: # running from a cluster
         runstart = time.time()
         y = attack_network(r_num, networks)
 
@@ -1088,7 +1130,10 @@ def write_output(x, average, average_p_half, run):
     complete_name = os.path.abspath(path)
     with open(complete_name, 'wb') as f:
         writer = csv.writer(f)
-        writer.writerow(['p', 'Pinf', 'p0.5'])
+        header_label = 'p'
+        if q_values > 1:
+            header_label = 'q'
+        writer.writerow([header_label, 'Pinf', 'p0.5'])
         for row in output:
             writer.writerow(row)
 
