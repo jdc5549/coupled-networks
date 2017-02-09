@@ -1,12 +1,15 @@
 function [is_blackout,relay_outages,MW_lost,p_out,busessep,flows,times,power_flow] = dcsimsep(ps,br_outages,bus_outages,opt)  
-% usage: [is_blackout,relay_outages,MW_lost,p_out,busessep,flows] = dcsimsep(ps,br_outages,bus_outages,opt)  
+% usage: [is_blackout,relay_outages,MW_lost,p_out,busessep,flows,times,power_flow] = dcsimsep(ps,br_outages,bus_outages,opt)  
 % is_blackout indicates whether a large separation occurs
 % branches_lost gives the set of dependant outages that occur due to relay actions
 %  this is a ? by 2 matrix, with t in the first column, br no. in the second
 % bus_outages gives the bus indices associated with bus failures
 % MW_lost indicates how much load was lost as a result of small separations
 % p_out is proportion of buses separated  
-% busessep is a list of the buses that separated  
+% busessep is a list of the buses that separated 
+% flows is the power flow across each branch at each timestep
+% times is the time at each timestep
+% power_flow is the power flow at each timestep
 
 % check the inputs
 if nargin<3

@@ -38,6 +38,7 @@
     "log_level":20,
     "verbose":true,
     "debug":false,
+    "select_each_replicate":false,
 
     "network_from_file":false,
     "comm_network_location":"data/networks/generated/network_ER_2383nodes_2.422deg_0.1rw_12345seed.edgelist",
@@ -45,7 +46,7 @@
     "network_type":"ER",
 
     "real":true,
-    "comm_model":"/Projects/CISR/coupled-networks/src/couplednetworks.py",
+    "comm_model":"/Users/veneman/workspace/rise/coupled-networks/src/couplednetworks.py",
     "host_OS":0,
     "optimizer":"mexosi",
     "two_way":true,
@@ -56,7 +57,7 @@
     "q_values":1,
     "q_min":0.0,
     "q_max":1.0,
-    "power_systems_data_location":"/Users/veneman/workspace/coupled-networks/data/power-grid/Polish_ps.mat",
+    "power_systems_data_location":"/Users/veneman/workspace/rise/coupled-networks/data/power-grid/Polish_ps.mat",
     "python_location":"/Applications/anaconda/bin/python",
     
     "betweenness_values":{
