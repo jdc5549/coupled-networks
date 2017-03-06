@@ -24,11 +24,11 @@ The coupled networks model is comprised of four modules described in this sectio
 
 An illustration of the interactions between these modules is [here](images/coupling-model-architecture.png).
 
-### Simulation Environment
+### Simulation environment
 
 The simulation environment sets up the failure/attack scenarios to run and compiles the results of each scenario. Simulations can be performed across either sets of node outages with ```cn_runner.m``` or across sets of network couplings with ```cn_runner_q.m```. To ensure repeatable results we pre-computed random node outages and couplings for the power grid used in the accompanying paper. These are found in ```data/node-removals``` and ```data/coupled-nodes``` directories respectively. The parameters section describes in more detail how these files are used.
 
-### Cascading sailure simulator
+### Cascading failure simulator
 
 A physics-based DC power flow cascading failure simulator (CFS), ```dcsimsep.m```, is used to provide a more realistic model of failures in the power grid. The CFS algorithm is detailed in the image below from [this paper](http://ieeexplore.ieee.org/document/6672899/) which also has more details on the CFS. 
 
