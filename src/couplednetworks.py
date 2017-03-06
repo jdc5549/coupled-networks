@@ -2,7 +2,7 @@
 """
 Coupled network cascading failure simulator.
 
-Copyright 2016 The MITRE Corporation and The University of Vermont
+Copyright 2017 The MITRE Corporation and The University of Vermont
 
 Run like:
 python couplednetworks.py -1 -1 -1 config.json 1
@@ -37,7 +37,7 @@ import networkx as nx
 from networkx.readwrite import json_graph
 
 if sys.version_info < (2, 6):
-    raise "must use Python 2.7 or greater"
+    raise "Python 2.7 or greater required"
     sys.exit(-1)
 
 """
@@ -267,12 +267,13 @@ def get_coupled_nodes_from_file(run, q_point, pid):
                     raise
     return coupled_nodes
 
+
 def find_coupled_nodes(replication,q_point):
-    """Parses the configuration to figure out how to get the coupled nodes."""
+    """Parse the configuration to figure out how to get the coupled nodes."""
     found_coupled_nodes = []
     if coupling_from_file is True and real is False and batch_mode is True:
         found_coupled_nodes = get_coupled_nodes_from_file(r_num, deg_of_coupling, -1)
-    elif coupling_from_file is True and real is False and batch_mode is False and replication == -1: # for running on a workstation vs running on a cluster
+    elif coupling_from_file is True and real is False and batch_mode is False and replication == -1:  # for running on a workstation vs running on a cluster
         found_coupled_nodes = get_coupled_nodes_from_file(r_num + 1, deg_of_coupling, -1)
     elif coupling_from_file is True and real is False and batch_mode is False and replication != -1:
         found_coupled_nodes = get_coupled_nodes_from_file(replication + 1, q_point, -1)
@@ -282,7 +283,7 @@ def find_coupled_nodes(replication,q_point):
     else:
         found_coupled_nodes = get_coupled_nodes_from_file(-1, -1, mpid)  # if called by the CFS Matlab model read coupled nodes from file
     return found_coupled_nodes
-coupled_nodes = find_coupled_nodes(-1,-1)
+coupled_nodes = find_coupled_nodes(-1,-1)  # get the coupled nodes
 
 
 def remove_links(network_a, network_b, swap_networks, iteration):
@@ -378,7 +379,7 @@ def attack_network(run, networks):
     logger.debug("\t\tRun number " + str(run) + " of " + str(runs) + ", iteration: " + str(cfs_iter))
 
     runstart = time.time()
-    y = [] # holds the result
+    y = []  # holds the result
 
     # Create the networks
     if generate_each_run is True:
@@ -423,6 +424,8 @@ def attack_network(run, networks):
 
 
 def check_for_failure(network_a, network_b, dbh, run, y):
+    """
+    """
     global nodes
     global critical_node
     global coupled_nodes
@@ -557,8 +560,8 @@ def check_for_failure(network_a, network_b, dbh, run, y):
             coupled_nodes_attacked = []
 
             if q_values > 1:
-                q_point = i / float(q_values);
-                q_point = q_point / (1 / float(q_range)) + q_min  # 0.1/(1/1.0) + 0.0 = 0.1         
+                q_point = i / float(q_values)
+                q_point = q_point / (1 / float(q_range)) + q_min  # 0.1/(1/1.0) + 0.0 = 0.1
                 coupled_nodes = find_coupled_nodes(i,q_point)
                 p = p_min
             else:
@@ -568,7 +571,6 @@ def check_for_failure(network_a, network_b, dbh, run, y):
                 if q_min != deg_of_coupling:
                     logger.warning("deg_of_coupling not equal to q_min. Using deg_of_coupling for q_point.")
                 coupled_nodes = find_coupled_nodes(i,deg_of_coupling)
-
 
             random_removal_fraction = 1 - p  # Fraction of nodes to remove
             num_nodes_attacked = int(math.floor(random_removal_fraction * n))
@@ -718,7 +720,7 @@ def check_for_failure(network_a, network_b, dbh, run, y):
                         y.append([p, 0])
                 if output_result_to_DB is True:
                     write_result(run, p, nodes_attacked, initial_nodes_attacked, result, dbh)
-            else: # TODO, the q-sweep capability should be streamlined
+            else:  # TODO, the q-sweep capability should be streamlined
                 if output_gc_size is True:
                     y.append([q_point, (float(giant_comp_size) / n)])
                 else:
@@ -1051,7 +1053,7 @@ def main():
         networks = manager.list(create_networks(network_type))
     else:
         networks = create_networks(network_type)
-    if real is False and batch_mode is False: # running from a workstation
+    if real is False and batch_mode is False:  # running from a workstation
         runstart = time.time()
         pool = mlt.Pool()
         for i in range(0, runs, 1):
@@ -1073,7 +1075,7 @@ def main():
         write_output(x, average, average_p_half, runs)
 
         print "Run time was " + str(time.time() - runstart) + " seconds"
-    elif real is False and batch_mode is True: # running from a cluster
+    elif real is False and batch_mode is True:  # running from a cluster
         runstart = time.time()
         y = attack_network(r_num, networks)
 
