@@ -4,7 +4,7 @@
 
 ## Model description
 
-The coupled networks model contains a set of tools to simulate cascading outages on networks. All of the experiments conducted for the accompanying paper, [Reducing Cascading Failure Risk by Increasing Infrastructure Network Interdependency](http://arxiv.org/abs/1410.6836), can be reproduced with this model. The following describes the model and how to run it.
+The coupled networks model contains a set of tools to simulate cascading outages on networks. All of the experiments conducted for the accompanying paper, [Reducing Cascading Failure Risk by Increasing Infrastructure Network Interdependency](images/Korkali (2016) - Reducing Cascading Failure Risk by Increasing Infrastructure Network Interdependence.pdf), can be reproduced with this model. The following describes the model and how to run it.
 
 ## Overview
 
