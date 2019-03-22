@@ -2,7 +2,7 @@
     "k":4.0,
     "n":2383,
     "runs":1000,
-    "p_values":35,
+    "p_values":70,
     "p_min":0.65,
     "p_max":1.0,
     "start_with_comms":false,
@@ -43,7 +43,7 @@
     "network_from_file":true,
     "comm_network_location":"data/networks/generated/network_Polish_2383nodes_2.422deg_0.1rw_12345seed.edgelist",
     "power_network_location":"data/networks/generated/network_Polish_2383nodes_2.422deg_0.0rw_12345seed.edgelist",
-    "network_type":"Power_GC_p-sweep_topological_power_start_0.5q_",
+    "network_type":"Power_GC_p-sweep_topological_power_start_70pts_1.0q_",
 
     "real":false,
     "comm_model":"/Projects/CISR/coupled-networks/src/couplednetworks.py",

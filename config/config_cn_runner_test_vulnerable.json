@@ -43,14 +43,14 @@
     "network_from_file":true,
     "comm_network_location":"data/networks/generated/network_Polish_2383nodes_2.422deg_0.1rw_12345seed.edgelist",
     "power_network_location":"data/networks/generated/network_Polish_2383nodes_2.422deg_0.0rw_12345seed.edgelist",
-    "network_type":"Intermediate_Smart_Grid",
+    "network_type":"Vulnerable_Smart_Grid",
 
     "real":true,
     "comm_model":"/Projects/CISR/coupled-networks/src/couplednetworks.py",
     "host_OS":0,
     "optimizer":"mexosi",
     "two_way":true,
-    "two_way_extreme":false,
+    "two_way_extreme":true,
     "use_control":true,
     "use_comm_model":true,
     
