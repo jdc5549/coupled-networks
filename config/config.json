@@ -20,6 +20,7 @@
     "deg_of_coupling":1.0,
     "inverse_step_size":200,
     "inverse_step_size_for_coupling":100,
+    "select_each_replicate":false,
 
     "targeted":false,
     "output_removed_nodes":true,
