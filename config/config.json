@@ -46,7 +46,7 @@
     "network_type":"Polish_test_plausible",
 
     "real":true,
-    "comm_model":"/Users/veneman/workspace/rise/coupled-networks/src/couplednetworks.py",
+    "comm_model":"C:/Users/james/Documents/coupled-networks/src/couplednetworks.py",
     "host_OS":0,
     "optimizer":"mexosi",
     "two_way":true,
@@ -57,7 +57,7 @@
     "q_values":1,
     "q_min":0.0,
     "q_max":1.0,
-    "power_systems_data_location":"/Users/veneman/workspace/rise/coupled-networks/data/power-grid/Polish_ps.mat",
+    "power_systems_data_location":"C:/Users/james/Documents/coupled-networks/data/power-grid/Polish_ps.mat",
     "python_location":"/Applications/anaconda/bin/python",
     
     "betweenness_values":{

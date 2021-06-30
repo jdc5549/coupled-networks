@@ -1,7 +1,7 @@
 {
     "k":4.0,
     "n":2383,
-    "runs":1000,
+    "runs":100,
     "p_values":1,
     "p_min":0.75,
     "p_max":1.0,
@@ -11,7 +11,7 @@
     "output_gc_size":true,
     "lambda":100,
 
-    "outages_from_file":true,
+    "outages_from_file":false,
     "num_outages_in_file":100,
     "min_outage_point":0.5,
     "coupling_from_file":true,
@@ -28,7 +28,7 @@
     "log_all_p_values":false,
     "write_networks_out":"",
     "random_rewire_prob":0.0,
-    "show_plot":false,
+    "show_plot":true,
     "shuffle_networks":false,
     "generate_each_run":false,
     "hpc":"HIVE",
@@ -46,7 +46,7 @@
     "network_type":"Power_GC_q-sweep_topological_power_start_",
 
     "real":false,
-    "comm_model":"/Projects/CISR/coupled-networks/src/couplednetworks.py",
+    "comm_model":"C:/Users/james/Documents/coupled-networks/src/couplednetworks.py",
     "host_OS":1,
     "optimizer":"mexosi",
     "two_way":false,
@@ -57,7 +57,7 @@
     "q_values":10,
     "q_min":0.0,
     "q_max":1.0,
-    "power_systems_data_location":"/Projects/CISR/coupled-networks/data/power-grid/Polish_ps.mat",
+    "power_systems_data_location":"C:/Users/james/Documents/coupled-networks/data/power-grid/Polish_ps.mat",
     "python_location":"/Applications/anaconda/bin/python",
     
     "betweenness_values":{

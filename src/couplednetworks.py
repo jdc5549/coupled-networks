@@ -158,13 +158,13 @@ network_filename = '/tmp/comms_net_' + str(mpid) + '.edgelist'
 if hpc == "HIVE":
     r_num = r_num + 1  # incremented by 1 to use with condor process variable which starts at 0
 
-if r_num is -1 and real is False and batch_mode is True:
+if r_num == -1 and real is False and batch_mode is True:
     sys.stderr.write("Trying to run in batch mode but run number not provided as an argument.")
     sys.exit(-1)
 # Change the internal state of the random generator for each run
 if batch_mode is False:
     newstate = random.randint(2, n * 2)
-    random.jumpahead(newstate)
+    random.seed(newstate)
 else:
     random.seed(r_num)
     newstate = r_num
@@ -206,7 +206,7 @@ if output_result_to_DB is True or output_removed_nodes_to_DB is True or find_sca
         from pymongo import Connection
         from pymongo.errors import ConnectionFailure
     except ImportError:
-        print "Missing powerlaw and/or pymongo modules."
+        print("Missing powerlaw and/or pymongo modules.")
 
 # x holds the p values used
 x = []
@@ -251,8 +251,8 @@ def get_coupled_nodes_from_file(run, q_point, pid):
                 if item != 0:
                     coupled_nodes.append(item)
             logger.debug("size coupled_nodes list " + str(len(coupled_nodes)) + " for run " + str(run) + ", q_point " + str(1 - q_point) + ", p_column " + str(p_column))
-        except Exception, e:
-            print "Coupled node outage read error: " + str(e)
+        except Exception as e:
+            print("Coupled node outage read error: " + str(e))
             raise
     else:  # getting called by something else so read the coupled node file created by the other process
         coupled_node_filename = '/tmp/coupled_nodes_' + str(pid) + '.csv'
@@ -262,8 +262,8 @@ def get_coupled_nodes_from_file(run, q_point, pid):
                 for next_row in coupled_data:
                     coupled_nodes.append(int(next_row['node']))
                 logger.debug("size coupled_nodes list " + str(len(coupled_nodes)) + " for run " + str(run) + ", q_point " + str(1 - q_point))
-        except Exception, e:
-                    print "Coupled node read error: " + str(e)
+        except Exception as e:
+                    print("Coupled node read error: " + str(e))
                     raise
     return coupled_nodes
 
@@ -352,8 +352,13 @@ def remove_links(network_a, network_b, swap_networks, iteration):
             node_in_subgraph = list(out_nodes_b)[k]
             logger.debug("Node that's different in subgraph k:" + str(k) + " is: " +
             str(node_in_subgraph) + ", iteration: " + str(iteration))
+
             # Find their neighbors
-            node_in_subgraph_neighbors = nx.neighbors(network_b, node_in_subgraph)
+            node_in_subgraph_neighbors = list(nx.neighbors(network_b, node_in_subgraph))
+            # try:
+            #     print(len(node_in_subgraph_neighbors))
+            # except Exception as e:
+            #     print(e)
             for m in range(0, len(node_in_subgraph_neighbors), 1):
                 if node_in_subgraph in coupled_nodes:  # check that this node is coupled
                     # Remove all the edges going to those neighbor nodes
@@ -363,18 +368,18 @@ def remove_links(network_a, network_b, swap_networks, iteration):
         if j == num_subnets - 1:
             swap_again += 1
     logger.debug("Original number of nodes to remove: " + str(len(nodes_to_remove)))
-    solitary_nodes = [n for n, d in network_b.degree_iter() if d == 0]  # nodes with 0 degree
+    solitary_nodes = [n for n, d in network_b.degree() if d == 0]  # nodes with 0 degree
     nodes_to_remove.extend(solitary_nodes)
     if logger.isEnabledFor(logging.DEBUG):
         nodes_to_remove = set(nodes_to_remove)
         nodes_to_remove = list(nodes_to_remove)
-        print "Final number of nodes to remove: " + str(len(nodes_to_remove))
-        print "swap_again " + str(swap_again) + " netA size " + str(len(network_a.nodes())) + " netB size " + str(len(network_b.nodes()))
-        print "gmcca size " + str(len(gmcca)) + " gmccb size " + str(len(gmccb))
+        print("Final number of nodes to remove: " + str(len(nodes_to_remove)))
+        print("swap_again " + str(swap_again) + " netA size " + str(len(network_a.nodes())) + " netB size " + str(len(network_b.nodes())))
+        print("gmcca size " + str(len(gmcca)) + " gmccb size " + str(len(gmccb)))
     return [swap_again, nodes_to_remove]
 
 
-def attack_network(run, networks):
+def attack_network(run, networks,rl_attack=None):
     """Create the networks and run the attack and cascade sequence on them."""
     logger.debug("\t\tRun number " + str(run) + " of " + str(runs) + ", iteration: " + str(cfs_iter))
 
@@ -397,13 +402,16 @@ def attack_network(run, networks):
     if output_removed_nodes_to_DB is True or output_result_to_DB is True:
         try:  # Connect to MongoDB
             c = Connection(host="localhost", port=27017)
-        except ConnectionFailure, e:
+        except ConnectionFailure as e:
             sys.stderr.write("Could not connect to MongoDB: %s" % e)
             # sys.exit(1)
         dbh = c["runs"]  # sets the db to "runs"
         assert dbh.connection == c
 
-    check_for_failure(network_a, network_b, dbh, run, y)
+    if rl_attack is None:
+        check_for_failure(network_a, network_b, dbh, run, y)
+    else:
+        check_for_failure(network_a, network_b, dbh, run, y,rl_attack=rl_attack)
 
     if real is False:  # Capture the result if not running from MATLAB
         d = defaultdict(list)
@@ -423,7 +431,7 @@ def attack_network(run, networks):
     return y
 
 
-def check_for_failure(network_a, network_b, dbh, run, y):
+def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
     """
     """
     global nodes
@@ -445,7 +453,9 @@ def check_for_failure(network_a, network_b, dbh, run, y):
         # print "\t !!!!!!! Using test grid status file !!!!!!!!!!"
 
         # Determine which nodes to remove
-        if targeted is False and outages_from_file is False:
+        if rl_attack is not None:
+            nodes_attacked = rl_attack
+        elif targeted is False and outages_from_file is False:
             nodes_attacked = random.sample(network_a.nodes(), num_nodes_attacked)
         elif targeted is True and outages_from_file is False:
             nodes_attacked = targeted_nodes(network_a, num_nodes_attacked)
@@ -482,9 +492,9 @@ def check_for_failure(network_a, network_b, dbh, run, y):
                                 # print "No bus separations"
                                 pass
                     except:
-                        print "CSV reader error. Check headers in file " + grid_status_filename + " and check for Unix line endings in that file."
+                        print("CSV reader error. Check headers in file " + grid_status_filename + " and check for Unix line endings in that file.")
             except:
-                print "*************** -> Missing grid status file <- ****************"
+                print("*************** -> Missing grid status file <- ****************")
             # if os.path.isfile(grid_status_filename):  # this is now deleted by the calling process. tmp file no longer needed so delete it
             #   os.remove(grid_status_filename)
 
@@ -497,7 +507,7 @@ def check_for_failure(network_a, network_b, dbh, run, y):
             if logger.isEnabledFor(logging.DEBUG):
                 num_nodes_attacked = len(busessep)
                 num_coupled_nodes_attacked = len(coupled_busessep)
-                print ">>>> Starting with grid, number of bus separations: " + str(num_nodes_attacked) + ". Number coupled separations: " + str(num_coupled_nodes_attacked)
+                print(">>>> Starting with grid, number of bus separations: " + str(num_nodes_attacked) + ". Number coupled separations: " + str(num_coupled_nodes_attacked))
         logger.debug("Subgraphs in network_b: " + str(len(sorted(nx.connected_component_subgraphs(network_b_copy), key=len, reverse=True))) +
             ", subgraphs in network_a: " + str(len(sorted(nx.connected_component_subgraphs(network_a_copy), key=len, reverse=True))))
         logger.debug("***Total nodes out PRE comms removal: " + str(n - len(network_a_copy.nodes())))
@@ -510,7 +520,7 @@ def check_for_failure(network_a, network_b, dbh, run, y):
         swap_networks = result[0]
         if len(result[1]) == 0:
             if verbose is True:
-                print "\t ######## No nodes removed #########"
+                print("\t ######## No nodes removed #########")
             pass
         else:
             nodes_attacked.extend(result[1])
@@ -526,7 +536,7 @@ def check_for_failure(network_a, network_b, dbh, run, y):
         if logger.isEnabledFor(logging.DEBUG):
             network_a_copy.remove_nodes_from(coupled_busessep)  # TODO figure out where coupling is managed for power/comms
             nodes_out_post = n - len(network_a_copy.nodes())
-            print ">>>Total nodes out POST comms removal: " + str(nodes_out_post)
+            print(">>>Total nodes out POST comms removal: " + str(nodes_out_post))
 
         with open(comm_status_filename, 'w') as f:
             try:
@@ -542,16 +552,18 @@ def check_for_failure(network_a, network_b, dbh, run, y):
                         status = 0
                     writer.writerow([item, status])
             except:
-                print "CSV writer error"
+                print("CSV writer error")
     else:  # If real is false then only simulate topological cascades.
         if p_values > 1 and q_values > 1:
+            print('Either p or q must equal 1 since only p or q sweep can be done at once. Configuration adjustment required to run.')
             sys.stderr.write("Either p or q must equal 1 since only p or q sweep can be done at once. Configuration adjustment required to run.")
             sys.exit(-1)
         if q_values > 1 and select_each_replicate is True:
+            print("Select each replicate is only supported when q_values == 1.")
             sys.stderr.write("Select each replicate is only supported when q_values == 1.")
             sys.exit(-1)
         range_values = max(p_values,q_values)
-        for i in range(0, range_values + 1, 1):
+        for i in range(0, range_values, 1):
             # innerrunstart = time.time()
             # copy the networks so that all node removals are done on the same network layout
             # new network layouts will be generated for each run if generate_each_run is true
@@ -574,8 +586,9 @@ def check_for_failure(network_a, network_b, dbh, run, y):
 
             random_removal_fraction = 1 - p  # Fraction of nodes to remove
             num_nodes_attacked = int(math.floor(random_removal_fraction * n))
-
-            if targeted is False and outages_from_file is False:
+            if rl_attack is not None:
+                nodes_attacked = rl_attack
+            elif targeted is False and outages_from_file is False:
                 nodes_attacked = random.sample(network_a.nodes(), num_nodes_attacked)
             elif targeted is True and outages_from_file is False:
                 nodes_attacked = targeted_nodes(network_a, num_nodes_attacked)
@@ -586,7 +599,6 @@ def check_for_failure(network_a, network_b, dbh, run, y):
             else:
                 sys.stderr.write("Unknown configuration of inputs: targeted and outages_from_file")
                 sys.exit(-1)
-
             # Track the initial nodes attacked if output_result_to_DB is true.
             initial_nodes_attacked = []
             # if output_result_to_DB is True or verbose is True:
@@ -595,7 +607,6 @@ def check_for_failure(network_a, network_b, dbh, run, y):
             for node in nodes_attacked:
                     if node in coupled_nodes:
                         coupled_nodes_attacked.extend([node])
-
             # If the critical node has been attacked then all nodes in network_a can't communicate
             if critical_node in coupled_nodes_attacked and start_with_comms is True:
                 network_a_copy.remove_nodes_from(nodes)
@@ -656,7 +667,6 @@ def check_for_failure(network_a, network_b, dbh, run, y):
                         coupled_nodes_attacked = set(coupled_nodes_attacked)  # remove duplicates
                         coupled_nodes_attacked = list(coupled_nodes_attacked)  # convert back to a list
                         logger.debug("Number of nodes lost at swap " + str(swap_networks) + ": " + str(len(nodes_attacked)))
-
                     num_net_a_edges = len(network_a_copy.edges())
                     num_net_b_edges = len(network_b_copy.edges())
                     edge_comparison.appendleft((num_net_a_edges, num_net_b_edges))
@@ -666,16 +676,15 @@ def check_for_failure(network_a, network_b, dbh, run, y):
                             break
                 if start_with_comms is True:  # Remove nodes_attacked from network_a, coupled_nodes_attacked from network_b
                     # if using a critical node check for connection to it
-                    if critical_node is not -1:
+                    if critical_node != -1:
                         nodes_attacked = critical_node_connection(network_a_copy, nodes_attacked)
                     network_a_copy.remove_nodes_from(nodes_attacked)
                     network_b_copy.remove_nodes_from(coupled_nodes_attacked)
                 else:  # Remove coupled_nodes_attacked from network_a, nodes_attacked from network_b
-                    if critical_node is not -1:
+                    if critical_node != -1:
                         coupled_nodes_attacked = critical_node_connection(network_a_copy, coupled_nodes_attacked)
                     network_a_copy.remove_nodes_from(coupled_nodes_attacked)
                     network_b_copy.remove_nodes_from(nodes_attacked)
-
             coupled_losses = set(nodes_attacked) - set(initial_nodes_attacked)
             logger.info("At p: " + str(p) + ", initial nodes lost on network_a: " + str(len(initial_nodes_attacked)) + ", nodes lost after link removal and coupling on network_b: " + str(len(coupled_nodes_attacked)) +
                 ", additional nodes lost due to cascades on both networks: " + str(len(coupled_losses)))
@@ -685,7 +694,7 @@ def check_for_failure(network_a, network_b, dbh, run, y):
             logger.debug("Final number of nodes after attack for i: " + str(i) +
                 ", netA: " + str(len(network_a_copy.nodes())) + ", netB: " + str(len(network_b_copy.nodes())))
 
-            if start_with_comms is True:
+            if start_with_comms:
                 conn_comp = sorted(nx.connected_components(network_a_copy), key=len, reverse=True)
             else:
                 conn_comp = sorted(nx.connected_components(network_b_copy), key=len, reverse=True)
@@ -706,10 +715,8 @@ def check_for_failure(network_a, network_b, dbh, run, y):
             #   gmccbSize = len(gmccb0)
             # print "Nodes in conn_comp: " + str(giant_comp_size) + ", nodes in gmccb: " + str(gmccbSize) + ". Blackout? " + str(blackout)
             # does the giant MCC exist and is its size greater than the threshold?
-
             result = 1  # for passing to write_result
-
-            if p_values > 1:
+            if p_values > 1 or (p_values == 1 and q_values == 1):
                 if output_gc_size is True:
                     y.append([p, (float(giant_comp_size) / n)])
                 else:
@@ -729,10 +736,8 @@ def check_for_failure(network_a, network_b, dbh, run, y):
                     else:
                         result = 0
                         y.append([q_point, 0])
-
                 if output_result_to_DB is True:
                     write_result(run, q_point, nodes_attacked, initial_nodes_attacked, result, dbh)
-            # print "y is: " + str(y)
             # print "Inner run time was " + str(time.time() - innerrunstart) + " seconds"
 
 
@@ -759,7 +764,7 @@ def critical_node_connection(network, nodes_attacked):
             # unconnected_nodes.extend(ccsg[i].nodes())
             unconnected_nodes.extend(ccsg[i])
         else:
-            if i is not 0:
+            if i != 0:
                 logger.debug("\t >>>>>> Critical node in subgraph " + str(i))
     nodes_attacked.extend(unconnected_nodes)
     nodes_attacked = set(nodes_attacked)  # remove duplicates
@@ -856,15 +861,11 @@ def write_removed_nodes(run, p, swap_networks, nodes_attacked, dbh, network_name
 
     dbh[experiment].insert(nodes_removed, safe=True)  # sets the collection to experiment
 
-
 def targeted_nodes(network_a, num_nodes_attacked):
-    degree_sequence = nx.degree(network_a).values()
-    node_by_deg = sorted(zip(degree_sequence, network_a), reverse=True)
+    node_by_deg = sorted(network_a.degree, key=lambda x: x[1], reverse=True)
     nodes_attacked = []
-
     for i in range(0, num_nodes_attacked, 1):
-        nodes_attacked.append(node_by_deg[i][1])
-
+        nodes_attacked.append(node_by_deg[i][0])
     return nodes_attacked
 
 
@@ -877,12 +878,12 @@ def get_nodes_from_file(run, p_point, network_a):
     # print "p_column " + str(p_column)
     if p_column > num_outages_in_file or p_column == 0:
         if verbose is True:
-            print "No outages found for p_point " + str(p_point) + " at column " + str(p_column) + " creating outage instead"
+            print("No outages found for p_point " + str(p_point) + " at column " + str(p_column) + " creating outage instead")
         random_removal_fraction = 1 - p_point    # Fraction of nodes to remove
         num_nodes_attacked = int(math.floor(random_removal_fraction * n))
         nodes_attacked = random.sample(network_a.nodes(), num_nodes_attacked)
         if verbose is True:
-            print "size nodes_attacked list " + str(len(nodes_attacked)) + " for run " + str(run) + ", p_point " + str(p_point)
+            print("size nodes_attacked list " + str(len(nodes_attacked)) + " for run " + str(run) + ", p_point " + str(p_point))
         return nodes_attacked
     try:
         f = bz2.BZ2File(file_name, mode='r')
@@ -895,9 +896,9 @@ def get_nodes_from_file(run, p_point, network_a):
             if item != 0:
                 nodes_attacked.append(item)
         if verbose is True:
-            print "size nodes_attacked list " + str(len(nodes_attacked)) + " for run " + str(run) + ", p_point " + str(p_point) + ", p_column " + str(p_column)
-    except Exception, e:
-                print "Node outage read error: " + str(e)
+            print("size nodes_attacked list " + str(len(nodes_attacked)) + " for run " + str(run) + ", p_point " + str(p_point) + ", p_column " + str(p_column))
+    except Exception as e:
+                print("Node outage read error: " + str(e))
                 raise
     # print "nodes_attacked " + str(nodes_attacked) + " run " + str(run) + ", p_point " + str(p_point)
     return nodes_attacked
@@ -911,8 +912,8 @@ def get_network_from_file(network_name):
             max_nodes = len(network.nodes()) + 1
             mapping = dict(zip(network.nodes(), range(1, max_nodes)))  # renumber the nodes to start at 1 for MATLAB
             network = nx.relabel_nodes(network, mapping)
-    except Exception, e:
-        print "Error Unknown network type for " + network_name + " " + str(e)
+    except Exception as e:
+        print("Error Unknown network type for " + network_name + " " + str(e))
         raise
 
     return network
@@ -922,7 +923,7 @@ def make_comms(network_b, copy):
     global n
     if random_rewire_prob == -1:
         degree_sequence = sorted(nx.degree(network_b).values(), reverse=True)
-        network_a = nx.configuration_model(degree_sequence)
+        network_a = nx.gnerators.configuration_model(degree_sequence)
     else:
         if copy is True:
             network_a = network_b.copy()
@@ -985,7 +986,7 @@ def create_networks(network_type):
         elif network_type == 'Lattice':
             l = math.sqrt(n)
             if(n % l != 0):
-                print "Number of nodes, " + str(n) + ", not square (i.e. sqrt(n) has a remainder) for lattice. Adjust n and retry."
+                print("Number of nodes, " + str(n) + ", not square (i.e. sqrt(n) has a remainder) for lattice. Adjust n and retry.")
                 raise
                 sys.exit(-1)
             l = int(l)
@@ -996,26 +997,26 @@ def create_networks(network_type):
             is a generated  communication network created through either a configuration
             model of the power grid or by randomly rewiring the power grid topology.
             '''
-            path = relpath + "data/power-grid/case2383wp.edgelist"
+            path = relpath + "data/power-grid/network_Polish_2383nodes_2.422deg_0.0rw_12345seed.edgelist"
             network_b = nx.read_edgelist(path, nodetype=int)
             mapping = dict(zip(network_b.nodes(), range(1, n + 1)))  # renumber the nodes to start at 1 for MATLAB
             network_b = nx.relabel_nodes(network_b, mapping)
             '''make the comms network'''
             if cfs_iter == 1 or real is False:
                 if verbose is True:
-                    print "^^^^^ Making comm network ^^^^^^"
+                    print("^^^^^ Making comm network ^^^^^^")
                 network_a = make_comms(network_b, True)
             else:
                 try:
                     if verbose is True:
-                        print "reading from comm network at: " + network_filename
+                        print("reading from comm network at: " + network_filename)
                     network_a = nx.read_edgelist(network_filename, nodetype=int)
                 except Exception as e:
-                    print e
-                    print "Read edgelist error"
+                    print(e)
+                    print("Read edgelist error")
                     raise
         else:
-            print 'Invalid network type: ' + network_type
+            print('Invalid network type: ' + network_type)
             return []
 
     # Order the nodes of the networks randomly
@@ -1030,17 +1031,16 @@ def create_networks(network_type):
         del mapping
         del randomlist
     elif real is True and shuffle_networks is True and verbose is True:
-        print "\t ******* -> Not shuffling networks when using a real grid with CFS <- ********"
+        print("\t ******* -> Not shuffling networks when using a real grid with CFS <- ********")
     if generate_each_run is False and find_scaling_exponent is True:
         degseq = sorted(nx.degree(network_a).values(), reverse=False)
         fit = powerlaw.Fit(degseq, xmin=2.0)
         if verbose is True:
-            print "Scaling exponent network_a " + str(fit.power_law.alpha)
+            print("Scaling exponent network_a " + str(fit.power_law.alpha))
         degseq = sorted(nx.degree(network_b).values(), reverse=False)
         fit = powerlaw.Fit(degseq, xmin=2.0)
         if verbose is True:
-            print "Scaling exponent network_b " + str(fit.power_law.alpha)
-
+            print("Scaling exponent network_b " + str(fit.power_law.alpha))
     return [network_a, network_b]
 
 
@@ -1074,7 +1074,7 @@ def main():
         x = [key for key, value in d.items()]
         write_output(x, average, average_p_half, runs)
 
-        print "Run time was " + str(time.time() - runstart) + " seconds"
+        print("Run time was " + str(time.time() - runstart) + " seconds")
     elif real is False and batch_mode is True:  # running from a cluster
         runstart = time.time()
         y = attack_network(r_num, networks)
@@ -1091,32 +1091,36 @@ def main():
         average_p_half = [float(value) / runs for key, value in p_half.items()]
         x = [key for key, value in d.items()]
 
-        write_output(x, average, average_p_half, runs)
+        #write_output(x, average, average_p_half, runs)
 
-        print "Run time was " + str(time.time() - runstart) + " seconds"
+        print("Run time was " + str(time.time() - runstart) + " seconds")
 
     else:  # This is being called by MATLAB
         attack_network(0, networks)  # set multi-run to 0 so it never writes to output
 
     if show_plot is True:
             # plot the result
-            plt.plot(x, average, 'bo')  # 'rx' for red x 'g+' for green + marker
+            plt.plot([1-val for val in x], [1-a for a in average], 'bo')  # 'rx' for red x 'g+' for green + marker
+            plt.xlabel('Percent of Nodes Attacked')
+            plt.ylabel('Percent of Nodes Down After Cascade')
+            #plt.plot(x, average_p_half, 'bo')  # 'rx' for red x 'g+' for green + marker
             # show the plot
+            plt.ylim([0,1])
             plt.show()
-
+    #print("Percent Attacked: ", 1-x[0])
+    #print("Successful Defend Prob:", average_p_half[0])
 
 def write_output(x, average, average_p_half, run):
     """Write the output to file."""
     if log_all_p_values is False and run != runs:
         return
-
     # transform the data to enable writing to csv
     output = []
     output.append(x)
     output.append(average)
     output.append(average_p_half)
     output = zip(* output)
-    output.sort(key=itemgetter(0))  # sort on x (0)
+    output = sorted(output, key = lambda y: y[0])  # sort on x (0)
 
     num_run = ''
     if run == runs:
@@ -1130,7 +1134,7 @@ def write_output(x, average, average_p_half, run):
         filename = str(r_num) + "_run_" + filename
     path = relpath + "output/" + filename
     complete_name = os.path.abspath(path)
-    with open(complete_name, 'wb') as f:
+    with open(complete_name, 'w') as f:
         writer = csv.writer(f)
         header_label = 'p'
         if q_values > 1:
@@ -1143,5 +1147,5 @@ if __name__ == '__main__':
     try:
         main()
     except Exception as e:
-        print e
+        print(e)
         raise
