@@ -29,6 +29,8 @@ import os
 import random
 import sys
 import time
+import numpy as np
+import traceback
 
 from collections import defaultdict, deque
 from operator import itemgetter
@@ -591,7 +593,10 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
             elif targeted is False and outages_from_file is False:
                 nodes_attacked = random.sample(network_a.nodes(), num_nodes_attacked)
             elif targeted is True and outages_from_file is False:
-                nodes_attacked = targeted_nodes(network_a, num_nodes_attacked)
+                try:
+                    nodes_attacked = rl_targeted_nodes(network_a,network_b, num_nodes_attacked)
+                except:
+                    traceback.print_exc()
             elif targeted is False and outages_from_file is True and batch_mode is True:
                 nodes_attacked = get_nodes_from_file(run, p, network_a_copy)
             elif targeted is False and outages_from_file is True and batch_mode is False:
@@ -868,6 +873,39 @@ def targeted_nodes(network_a, num_nodes_attacked):
         nodes_attacked.append(node_by_deg[i][0])
     return nodes_attacked
 
+def rl_targeted_nodes(network_a, network_b,num_nodes_attacked):
+    import torch as th
+    from stable_baselines3.common.utils import obs_as_tensor, safe_mean
+    from stable_baselines3.common.policies import ActorCriticPolicy, BasePolicy
+    from stable_baselines3 import PPO,A2C
+
+    edgelist_a = nx.to_edgelist(network_a)
+    edgelist_b = nx.to_edgelist(network_b)
+    edgelist = []
+    for edge in edgelist_a:
+        edgelist.append([edge[0],edge[1]])
+    for edge in edgelist_b:
+        edgelist.append([edge[0],edge[1]])
+    with th.no_grad():
+        observation = np.asarray(edgelist).transpose().flatten()
+        obs_tensor = obs_as_tensor(observation,th.device('cuda')).unsqueeze(0)
+        model = PPO.load('models/PPO_p05_single_1')
+        attack_degree = 1
+        num_samples = int(num_nodes_attacked / attack_degree)
+        latent_pi,_,latent_sde = model.policy._get_latent(obs_tensor)
+        act_dist = model.policy._get_action_dist_from_latent(latent_pi, latent_sde)
+        actions = th.stack([dist.sample(sample_shape=(num_samples,)).squeeze() for dist in act_dist.distribution],dim=1)
+        #Replace any duplicate nodes
+        nodes = []
+        for i in range(actions.shape[0]):
+            act = actions[i].cpu().numpy()
+            overlap = any(a in nodes for a in act)
+            while overlap:
+                act = th.stack([dist.sample() for dist in act_dist.distribution],dim=1).cpu().numpy()[0]
+                overlap = any(a in nodes for a in act)
+            for a in act:
+                nodes.append(a)             
+    return nodes
 
 def get_nodes_from_file(run, p_point, network_a):
     nodes_attacked = []
@@ -1057,6 +1095,7 @@ def main():
         runstart = time.time()
         pool = mlt.Pool()
         for i in range(0, runs, 1):
+            print('Run ',i,' started')
             pool.apply_async(attack_network, args=(i, networks, ), callback=log_result)
 
         pool.close()
@@ -1107,6 +1146,8 @@ def main():
             # show the plot
             plt.ylim([0,1])
             plt.show()
+    data = np.stack([[1-val for val in x],[1-a for a in average]])
+    np.save('./output/rl_attack',data)
     #print("Percent Attacked: ", 1-x[0])
     #print("Successful Defend Prob:", average_p_half[0])
 
