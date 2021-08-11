@@ -259,7 +259,7 @@ def get_coupled_nodes_from_file(run, q_point, pid):
     else:  # getting called by something else so read the coupled node file created by the other process
         coupled_node_filename = '/tmp/coupled_nodes_' + str(pid) + '.csv'
         try:
-            with open(coupled_node_filename, 'rb') as f:
+            with open(coupled_node_filename, 'r') as f:
                 coupled_data = csv.DictReader(f)
                 for next_row in coupled_data:
                     coupled_nodes.append(int(next_row['node']))
@@ -480,7 +480,7 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
         else:
             # read grid status and remove nodes accordingly
             try:
-                with open(grid_status_filename, 'rb') as f:
+                with open(grid_status_filename, 'r') as f:
                     try:
                         reader = csv.DictReader(f)
                         for item in reader:
@@ -510,8 +510,8 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
                 num_nodes_attacked = len(busessep)
                 num_coupled_nodes_attacked = len(coupled_busessep)
                 print(">>>> Starting with grid, number of bus separations: " + str(num_nodes_attacked) + ". Number coupled separations: " + str(num_coupled_nodes_attacked))
-        logger.debug("Subgraphs in network_b: " + str(len(sorted(nx.connected_component_subgraphs(network_b_copy), key=len, reverse=True))) +
-            ", subgraphs in network_a: " + str(len(sorted(nx.connected_component_subgraphs(network_a_copy), key=len, reverse=True))))
+        logger.debug("Subgraphs in network_b: " + str(len(sorted((network_b_copy.subgraph(c) for c in nx.connected_components(network_b_copy)), key=len, reverse=True))) +
+            ", subgraphs in network_a: " + str(len(sorted((network_b_copy.subgraph(c) for c in nx.connected_components(network_b_copy)), key=len, reverse=True))))
         logger.debug("***Total nodes out PRE comms removal: " + str(n - len(network_a_copy.nodes())))
         coupled_losses = set(nodes_attacked)
         logger.info("In iteration " + str(cfs_iter) + ", nodes lost: " + str(len(coupled_losses)))
@@ -1146,8 +1146,9 @@ def main():
             # show the plot
             plt.ylim([0,1])
             plt.show()
-    data = np.stack([[1-val for val in x],[1-a for a in average]])
-    np.save('./output/rl_attack',data)
+    if not real:
+        data = np.stack([[1-val for val in x],[1-a for a in average]])
+        np.save('./output/rl_attack',data)
     #print("Percent Attacked: ", 1-x[0])
     #print("Successful Defend Prob:", average_p_half[0])
 
