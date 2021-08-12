@@ -46,7 +46,7 @@
     "network_type":"Intermediate_Smart_Grid",
 
     "real":true,
-    "comm_model":"C:/Users/james/Documents/coupled-networks/src/couplednetworks.py",
+    "comm_model":"/home/james/Documents/coupled-networks/src/couplednetworks.py",
     "host_OS":0,
     "optimizer":"mexosi",
     "two_way":true,
@@ -57,8 +57,8 @@
     "q_values":1,
     "q_min":0.0,
     "q_max":1.0,
-    "power_systems_data_location":"C:/Users/james/Documents/coupled-networks/data/power-grid/Polish_ps.mat",
-    "python_location":"/Applications/anaconda/bin/python",
+    "power_systems_data_location":"/home/james/Documents/coupled-networks/data/power-grid/Polish_ps.mat",
+    "python_location":"/home/james/anaconda3/bin/python",
     
     "betweenness_values":{
         "network_SF_2383nodes_2.422deg_0.0rw_12345seed.edgelist":5,
