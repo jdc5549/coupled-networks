@@ -38,6 +38,8 @@ from operator import itemgetter
 import networkx as nx
 from networkx.readwrite import json_graph
 
+import matlab.engine
+
 if sys.version_info < (2, 6):
     raise "Python 2.7 or greater required"
     sys.exit(-1)
@@ -441,120 +443,81 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
     global coupled_nodes
 
     if real is True:  # real == True enables the use of the external DC power flow simulator.
-        network_a_copy = network_a.copy()  # Comm network
-        network_b_copy = network_b.copy()  # Power network
-        num_nodes_attacked = int(math.floor(percent_removed * n))
-        busessep = []  # bus separations read from MATLAB
-        nodes_attacked = []  # if start_with_comms is true then this holds the initial contingency otherwise it gets set to busessep
-        coupled_busessep = []  # bus separations attached to coupled nodes
-        swap_networks = 1  # Determines which network to start with in remove_links
-        nodes = range(1, n + 1, 1)  # for interfacing with MATLAB start at 1
-        comm_status_filename = '/tmp/comm_status_' + str(mpid) + '.csv'
-        grid_status_filename = '/tmp/grid_status_' + str(mpid) + '.csv'
-        # grid_status_filename = '/tmp/grid_status_test.csv'
-        # print "\t !!!!!!! Using test grid status file !!!!!!!!!!"
-
-        # Determine which nodes to remove
-        if rl_attack is not None:
-            nodes_attacked = rl_attack
-        elif targeted is False and outages_from_file is False:
-            nodes_attacked = random.sample(network_a.nodes(), num_nodes_attacked)
-        elif targeted is True and outages_from_file is False:
-            nodes_attacked = targeted_nodes(network_a, num_nodes_attacked)
-        elif targeted is False and outages_from_file is True and start_with_comms is True:
-            # this is only used if start_with_comms is true
-            nodes_attacked = get_nodes_from_file(run + 1, 1 - percent_removed, network_a)  # TODO fix this
-        elif targeted is False and outages_from_file is True and start_with_comms is False:
-            nodes_attacked = []  # get nodesAttached from the grid status file
-        else:
-            sys.stderr.write("Unknown configuration of inputs: targeted and outages_from_file")
+        if p_values > 1 and q_values > 1:
+            print('Either p or q must equal 1 since only p or q sweep can be done at once. Configuration adjustment required to run.')
+            sys.stderr.write("Either p or q must equal 1 since only p or q sweep can be done at once. Configuration adjustment required to run.")
             sys.exit(-1)
+        if q_values > 1 and select_each_replicate is True:
+            print("Select each replicate is only supported when q_values == 1.")
+            sys.stderr.write("Select each replicate is only supported when q_values == 1.")
+            sys.exit(-1)
+        range_values = max(p_values,q_values)
+        for i in range(0, range_values, 1):
+            # innerrunstart = time.time()
+            # copy the networks so that all node removals are done on the same network layout
+            # new network layouts will be generated for each run if generate_each_run is true
+            network_a_copy = network_a.copy()
+            network_b_copy = network_b.copy()
+            coupled_nodes_attacked = []
 
-        # Remove nodes from the networks
-        if start_with_comms is True:  # TODO To start with comms in "real" mode the interface needs to be worked out with DCSIMSEP
-            logger.debug("Starting with comms, percent_removed " + str(percent_removed) + ", num_nodes_attacked " + str(num_nodes_attacked))
-            # remove nodes from the comms network
-            network_a_copy.remove_nodes_from(nodes_attacked)
-            # network_b_copy is the copy of the grid that's used in MATLAB, remove the bus separations on it for comparing with network_a_copy
-            # network_b_copy.remove_nodes_from(nodes_attacked)
-        else:
-            # read grid status and remove nodes accordingly
-            try:
-                with open(grid_status_filename, 'r') as f:
-                    try:
-                        reader = csv.DictReader(f)
-                        for item in reader:
-                            try:
-                                if int(item['status']) == 0:
-                                    bus = int(item['bus'])
-                                    busessep.append(bus)
-                                    if bus in coupled_nodes:
-                                        coupled_busessep.append(bus)  # nodes that will be removed from comms
-                            except ValueError:
-                                # print "No bus separations"
-                                pass
-                    except:
-                        print("CSV reader error. Check headers in file " + grid_status_filename + " and check for Unix line endings in that file.")
-            except:
-                print("*************** -> Missing grid status file <- ****************")
-            # if os.path.isfile(grid_status_filename):  # this is now deleted by the calling process. tmp file no longer needed so delete it
-            #   os.remove(grid_status_filename)
+            if q_values > 1:
+                q_point = i / float(q_values)
+                q_point = q_point / (1 / float(q_range)) + q_min  # 0.1/(1/1.0) + 0.0 = 0.1
+                coupled_nodes = find_coupled_nodes(i,q_point)
+                p = p_min
+            else:
+                p = i / float(p_values)
+                p = p / (1 / float(p_range)) + p_min
+            if select_each_replicate is True:
+                if q_min != deg_of_coupling:
+                    logger.warning("deg_of_coupling not equal to q_min. Using deg_of_coupling for q_point.")
+                coupled_nodes = find_coupled_nodes(i,deg_of_coupling)
 
-            # Remove the nodes on network_b, power grid, to match the state it was in leaving MATLAB
-            network_b_copy.remove_nodes_from(busessep)
-            # Remove the nodes on network_a, comms, that go to the bus separations on network_b, power
-            # and are also coupled
-            network_a_copy.remove_nodes_from(coupled_busessep)
-            nodes_attacked = busessep
-            if logger.isEnabledFor(logging.DEBUG):
-                num_nodes_attacked = len(busessep)
-                num_coupled_nodes_attacked = len(coupled_busessep)
-                print(">>>> Starting with grid, number of bus separations: " + str(num_nodes_attacked) + ". Number coupled separations: " + str(num_coupled_nodes_attacked))
-        logger.debug("Subgraphs in network_b: " + str(len(sorted((network_b_copy.subgraph(c) for c in nx.connected_components(network_b_copy)), key=len, reverse=True))) +
-            ", subgraphs in network_a: " + str(len(sorted((network_b_copy.subgraph(c) for c in nx.connected_components(network_b_copy)), key=len, reverse=True))))
-        logger.debug("***Total nodes out PRE comms removal: " + str(n - len(network_a_copy.nodes())))
-        coupled_losses = set(nodes_attacked)
-        logger.info("In iteration " + str(cfs_iter) + ", nodes lost: " + str(len(coupled_losses)))
+            random_removal_fraction = 1 - p  # Fraction of nodes to remove
+            num_nodes_attacked = int(math.floor(random_removal_fraction * n))
+            if rl_attack is not None:
+                nodes_attacked = rl_attack
+            elif targeted is False and outages_from_file is False:
+                nodes_attacked = random.sample(network_a.nodes(), num_nodes_attacked)
+            elif targeted is True and outages_from_file is False:
+                nodes_attacked = targeted_nodes(network_a, num_nodes_attacked)
+            elif targeted is False and outages_from_file is True and batch_mode is True:
+                nodes_attacked = get_nodes_from_file(run, p, network_a_copy)
+            elif targeted is False and outages_from_file is True and batch_mode is False:
+                nodes_attacked = get_nodes_from_file(run + 1, p, network_a_copy)
+            else:
+                sys.stderr.write("Unknown configuration of inputs: targeted and outages_from_file")
+                sys.exit(-1)
 
-        # Remove the links in the comms network, network A, that no longer connect between networks
-        result = remove_links(network_b_copy, network_a_copy, swap_networks, cfs_iter)
+            for node in nodes_attacked:
+                    if node in coupled_nodes:
+                        coupled_nodes_attacked.extend([node])  
+            # If the critical node has been attacked then all nodes in network_a can't communicate
+            if critical_node in coupled_nodes_attacked and start_with_comms is True:
+                network_a_copy.remove_nodes_from(nodes)
+                if output_removed_nodes_to_DB is True:
+                    write_removed_nodes(run, p, 1, nodes_attacked, dbh, "A", network_a_copy)  
+            
+            else:  # Proceed normally
+                # print "<><><><>Starting, iteration " + str(i) + ", " + str(len(nodes_attacked)) + " nodes removed<><><><>"
+                # remove the attacked nodes from both networks
+                if start_with_comms is True:
+                    network_a_copy.remove_nodes_from(nodes_attacked)
+                    network_b_copy.remove_nodes_from(coupled_nodes_attacked)
+                else:
+                    network_a_copy.remove_nodes_from(coupled_nodes_attacked)
+                    network_b_copy.remove_nodes_from(nodes_attacked)
 
-        swap_networks = result[0]
-        if len(result[1]) == 0:
-            if verbose is True:
-                print("\t ######## No nodes removed #########")
-            pass
-        else:
-            nodes_attacked.extend(result[1])
-            nodes_attacked = set(nodes_attacked)  # remove duplicates
-            nodes_attacked = list(nodes_attacked)  # convert back to a list
-            coupled_busessep.extend(result[1])
-            coupled_busessep = set(coupled_busessep)  # remove duplicates
-            coupled_busessep = list(coupled_busessep)  # convert back to a list
-            # print ("Additional number of nodes out: " + str(len(result[1])) +
-            #   ", total nodes out: " + str(len(nodes_attacked)))
-        del result  # free up memory
-
-        if logger.isEnabledFor(logging.DEBUG):
-            network_a_copy.remove_nodes_from(coupled_busessep)  # TODO figure out where coupling is managed for power/comms
-            nodes_out_post = n - len(network_a_copy.nodes())
-            print(">>>Total nodes out POST comms removal: " + str(nodes_out_post))
-
-        with open(comm_status_filename, 'w') as f:
-            try:
-                writer = csv.writer(f)
-                writer.writerow(['node', 'status'])  # Header
-                status = 0
-                if critical_node != -1:
-                    nodes_attacked = critical_node_connection(network_a_copy, coupled_busessep)
-                for item in nodes:
-                    if item not in nodes_attacked:
-                        status = 1
-                    else:
-                        status = 0
-                    writer.writerow([item, status])
-            except:
-                print("CSV writer error")
+                logger.debug("\t>>>> Number of nodes attacked: " + str(num_nodes_attacked) +
+                    ", fraction: " + str(random_removal_fraction) + ". Of these " +
+                    str(len(coupled_nodes_attacked)) + " are coupled nodes")
+                logger.debug("Starting number of edges after attack for i: " + str(i) +
+                    " netA: " + str(len(network_a_copy.edges())) + " netB: " + str(len(network_b_copy.edges())))
+                eng = matlab.engine.start_matlab()
+                ps = json.load(open(config['power_systems_data_location']))
+                nodes_attacked_matlab = [n+1 for n in nodes_attacked]
+                ret = eng.dcsimsep(ps,[],nodes_attacked_matlab,config)
+                print(ret)
     else:  # If real is false then only simulate topological cascades.
         if p_values > 1 and q_values > 1:
             print('Either p or q must equal 1 since only p or q sweep can be done at once. Configuration adjustment required to run.')
@@ -593,10 +556,7 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
             elif targeted is False and outages_from_file is False:
                 nodes_attacked = random.sample(network_a.nodes(), num_nodes_attacked)
             elif targeted is True and outages_from_file is False:
-                try:
-                    nodes_attacked = rl_targeted_nodes(network_a,network_b, num_nodes_attacked)
-                except:
-                    traceback.print_exc()
+                nodes_attacked = rl_targeted_nodes(network_a,network_b, num_nodes_attacked)
             elif targeted is False and outages_from_file is True and batch_mode is True:
                 nodes_attacked = get_nodes_from_file(run, p, network_a_copy)
             elif targeted is False and outages_from_file is True and batch_mode is False:
