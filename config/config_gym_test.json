@@ -11,7 +11,7 @@
     "output_gc_size":true,
     "lambda":100,
 
-    "outages_from_file":false,
+    "outages_from_file":true,
     "num_outages_in_file":100,
     "min_outage_point":0.5,
     "coupling_from_file":true,

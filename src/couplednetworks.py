@@ -38,7 +38,7 @@ from operator import itemgetter
 import networkx as nx
 from networkx.readwrite import json_graph
 
-import matlab.engine
+import h5py
 
 if sys.version_info < (2, 6):
     raise "Python 2.7 or greater required"
@@ -53,7 +53,7 @@ parser.add_argument('mpid', metavar='MATLAB_PID', type=int, nargs=1, help='proce
 parser.add_argument('cfs_iter', metavar='CFS_iteration', type=int, nargs=1, help='iteration from MATLAB, ' +
     'if running without MATLAB use -1 as a command line argument')
 parser.add_argument('percent_removed', metavar='percent_removed', type=float, nargs=1, help='Percent of nodes removed ' +
-    'if running without MATLAB use -1 as a command line argument')
+   'if running without MATLAB use -1 as a command line argument')
 parser.add_argument('config_name', metavar='config_name', type=str, nargs=1, help='Name and location of config.json file')
 parser.add_argument('r_num', default=-1, metavar='replicate_number', type=int, nargs='?', help='Optional replicate number if running in batch mode')
 args = parser.parse_args()
@@ -235,8 +235,8 @@ def get_coupled_nodes_from_file(run, q_point, pid):
         p_column = int(round(p_calc)) - 1  # 100-100*(0.99-0.01) - 1 = 1, round first otherwise you can get unexpected results
         if n == 2383 and p_column == 0:
             return []
-        if n == 2383 and p_column == 100:
-            return range(1,2384,1)
+        #if n == 2383 and p_column == 100:
+        #    return range(1,2384,1)
         if p_column > num_couplings_in_file or n != 2383:
             random_removal_fraction = 1 - q_point    # Fraction of nodes to remove
             num_coupled_nodes = int(math.floor(random_removal_fraction * n))
@@ -281,11 +281,16 @@ def find_coupled_nodes(replication,q_point):
         found_coupled_nodes = get_coupled_nodes_from_file(r_num + 1, deg_of_coupling, -1)
     elif coupling_from_file is True and real is False and batch_mode is False and replication != -1:
         found_coupled_nodes = get_coupled_nodes_from_file(replication + 1, q_point, -1)
-    elif coupling_from_file is False and real is False:
+    elif coupling_from_file is True and real is True:
+        found_coupled_nodes = get_coupled_nodes_from_file('3', deg_of_coupling, -1)
+    else:
         number_coupled = int(math.floor(deg_of_coupling * n))
         found_coupled_nodes = random.sample(nodes, number_coupled)  # nodes that are connected between networks
-    else:
-        found_coupled_nodes = get_coupled_nodes_from_file(-1, -1, mpid)  # if called by the CFS Matlab model read coupled nodes from file
+    # elif coupling_from_file is False and real is False:
+    #     number_coupled = int(math.floor(deg_of_coupling * n))
+    #     found_coupled_nodes = random.sample(nodes, number_coupled)  # nodes that are connected between networks
+    # else:
+    #     found_coupled_nodes = get_coupled_nodes_from_file(-1, -1, mpid)  # if called by the CFS Matlab model read coupled nodes from file
     return found_coupled_nodes
 coupled_nodes = find_coupled_nodes(-1,-1)  # get the coupled nodes
 
@@ -488,36 +493,36 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
             else:
                 sys.stderr.write("Unknown configuration of inputs: targeted and outages_from_file")
                 sys.exit(-1)
-
-            for node in nodes_attacked:
-                    if node in coupled_nodes:
-                        coupled_nodes_attacked.extend([node])  
-            # If the critical node has been attacked then all nodes in network_a can't communicate
-            if critical_node in coupled_nodes_attacked and start_with_comms is True:
-                network_a_copy.remove_nodes_from(nodes)
-                if output_removed_nodes_to_DB is True:
-                    write_removed_nodes(run, p, 1, nodes_attacked, dbh, "A", network_a_copy)  
             
-            else:  # Proceed normally
-                # print "<><><><>Starting, iteration " + str(i) + ", " + str(len(nodes_attacked)) + " nodes removed<><><><>"
-                # remove the attacked nodes from both networks
-                if start_with_comms is True:
-                    network_a_copy.remove_nodes_from(nodes_attacked)
-                    network_b_copy.remove_nodes_from(coupled_nodes_attacked)
+            import matlab.engine
+            eng = matlab.engine.start_matlab()
+            eng.addpath('./src/',nargout=0)
+            eng.addpath('src/mexosi_v03',nargout=0)
+            nodes_attacked_matlab = matlab.double([node+1 for node in nodes_attacked])
+            coupled_nodes_matlab = matlab.double(coupled_nodes)
+            giant_comp_size, MW_lost = eng.cn_runner_python(nodes_attacked_matlab,coupled_nodes_matlab,config_name,nargout=2)
+            #print("giant_comp_size:", giant_comp_size)
+            #print("MW_lost:",MW_lost)
+            if p_values > 1 or (p_values == 1 and q_values == 1):
+                if output_gc_size is True:
+                    y.append([p, giant_comp_size])
                 else:
-                    network_a_copy.remove_nodes_from(coupled_nodes_attacked)
-                    network_b_copy.remove_nodes_from(nodes_attacked)
-
-                logger.debug("\t>>>> Number of nodes attacked: " + str(num_nodes_attacked) +
-                    ", fraction: " + str(random_removal_fraction) + ". Of these " +
-                    str(len(coupled_nodes_attacked)) + " are coupled nodes")
-                logger.debug("Starting number of edges after attack for i: " + str(i) +
-                    " netA: " + str(len(network_a_copy.edges())) + " netB: " + str(len(network_b_copy.edges())))
-                eng = matlab.engine.start_matlab()
-                ps = json.load(open(config['power_systems_data_location']))
-                nodes_attacked_matlab = [n+1 for n in nodes_attacked]
-                ret = eng.dcsimsep(ps,[],nodes_attacked_matlab,config)
-                print(ret)
+                    if giant_comp_size > threshold:
+                        y.append([p, 1])
+                    else:
+                        result = 0
+                        y.append([p, 0])
+                if output_result_to_DB is True:
+                    write_result(run, p, nodes_attacked, initial_nodes_attacked, result, dbh)
+            else:  # TODO, the q-sweep capability should be streamlined
+                if output_gc_size is True:
+                    y.append([q_point, (float(giant_comp_size) / n)])
+                else:
+                    if giant_comp_size > threshold:
+                        y.append([q_point, 1])
+                    else:
+                        result = 0
+                        y.append([q_point, 0])
     else:  # If real is false then only simulate topological cascades.
         if p_values > 1 and q_values > 1:
             print('Either p or q must equal 1 since only p or q sweep can be done at once. Configuration adjustment required to run.')
@@ -1043,74 +1048,71 @@ def create_networks(network_type):
 
 
 def main():
-    # Setup multi-core parallel runs if not running on an HPC
-    manager = mlt.Manager()
-    networks = []
-    if generate_each_run is False and real is False:
-        # allow the generated networks to be shared by all processes/threads
-        networks = manager.list(create_networks(network_type))
+    [network_a, network_b] = create_networks(network_type)
+    network_a_copy = network_a.copy()
+    network_b_copy = network_b.copy()
+    comm_status_filename = '/tmp/comm_status_' + str(mpid) + '.csv'
+    grid_status_filename = '/tmp/grid_status_' + str(mpid) + '.csv'
+
+    busessep = []
+    coupled_busessep = []
+    swap_networks = 1
+    try:
+        with open(grid_status_filename,'r') as f:
+            try:
+                reader = csv.DictReader(f)
+                for item in reader:
+                    try:
+                        if int(item['status']) == 0:
+                            bus = int(item['bus'])
+                            busessep.append(bus)
+                            if bus in coupled_nodes:
+                                coupled_busessep.append(bus)
+                    except ValueError:
+                        pass
+            except:
+                print("CSV reader error. Check headers in file " + grid_status_filename + "and check for Unix line endings in file.")
+    except:
+        print("************ -> Missing grid status file <- *********")
+
+    #Remove the nodes on network_b, power grid, to match the state it was in leaving MATLAB
+    network_b_copy.remove_nodes_from(busessep)
+    #Remove the nodes on network_a, comms, that go to the bus separations on network_b, power and are also coupled
+    network_a_copy.remove_nodes_from(coupled_busessep)
+    nodes_attacked = busessep
+    coupled_losses=set(nodes_attacked)
+    #Remove the links in the comms network, network_a, that no longer connect between networks
+    result = remove_links(network_b_copy,network_a_copy,swap_networks,cfs_iter)
+
+    swap_networks = result[0]
+    if len(result[1]) == 0:
+        if verbose is True:
+            print("\t ######## No nodes removed ########")
+        pass
     else:
-        networks = create_networks(network_type)
-    if real is False and batch_mode is False:  # running from a workstation
-        runstart = time.time()
-        pool = mlt.Pool()
-        for i in range(0, runs, 1):
-            print('Run ',i,' started')
-            pool.apply_async(attack_network, args=(i, networks, ), callback=log_result)
+        nodes_attacked.extend(result[1])
+        nodes_attacked = set(nodes_attacked) # remove duplicates
+        nodes_attacked = list(nodes_attacked) # convert back to a list
+        coupled_busessep.extend(result[1])
+        coupled_busessep = set(coupled_busessep) # remove duplicates
+        coupled_busessep = list(coupled_busessep) # convert back to a list
+    del result # free up memory
 
-        pool.close()
-        pool.join()
-        d = defaultdict(list)
-        p_half = defaultdict(int)
-        for key, value in allY:
-            d[key].append(value)
-            if value > 0.5:
-                p_half[key] += 1
-            else:
-                p_half[key] += 0
-        average = [float(sum(value)) / len(value) for key, value in d.items()]
-        average_p_half = [float(value) / runs for key, value in p_half.items()]
-        x = [key for key, value in d.items()]
-        write_output(x, average, average_p_half, runs)
-
-        print("Run time was " + str(time.time() - runstart) + " seconds")
-    elif real is False and batch_mode is True:  # running from a cluster
-        runstart = time.time()
-        y = attack_network(r_num, networks)
-
-        d = defaultdict(list)
-        p_half = defaultdict(int)
-        for key, value in y:
-            d[key].append(value)
-            if value > 0.5:
-                p_half[key] += 1
-            else:
-                p_half[key] += 0
-        average = [float(sum(value)) / len(value) for key, value in d.items()]
-        average_p_half = [float(value) / runs for key, value in p_half.items()]
-        x = [key for key, value in d.items()]
-
-        #write_output(x, average, average_p_half, runs)
-
-        print("Run time was " + str(time.time() - runstart) + " seconds")
-
-    else:  # This is being called by MATLAB
-        attack_network(0, networks)  # set multi-run to 0 so it never writes to output
-
-    if show_plot is True:
-            # plot the result
-            plt.plot([1-val for val in x], [1-a for a in average], 'bo')  # 'rx' for red x 'g+' for green + marker
-            plt.xlabel('Percent of Nodes Attacked')
-            plt.ylabel('Percent of Nodes Down After Cascade')
-            #plt.plot(x, average_p_half, 'bo')  # 'rx' for red x 'g+' for green + marker
-            # show the plot
-            plt.ylim([0,1])
-            plt.show()
-    if not real:
-        data = np.stack([[1-val for val in x],[1-a for a in average]])
-        np.save('./output/rl_attack',data)
-    #print("Percent Attacked: ", 1-x[0])
-    #print("Successful Defend Prob:", average_p_half[0])
+    with open(comm_status_filename,'w') as f:
+        try:
+            writer = csv.writer(f)
+            writer.writerow(['node','status']) #Header
+            status = 0
+            if critical_node != -1:
+                nodes_attacked = critical_node_connection(network_a_copy, coupled_busessep)
+            for item in nodes:
+                if item not in nodes_attacked:
+                    status = 1
+                else:
+                    status = 0
+                writer.writerow([item,status])
+        except:
+            print("CSV writer error")
 
 def write_output(x, average, average_p_half, run):
     """Write the output to file."""

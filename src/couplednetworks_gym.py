@@ -13,8 +13,8 @@ from stable_baselines3 import PPO,A2C
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.utils import obs_as_tensor, safe_mean
 
-from torch_geometric.data import Data
-from torch_geometric.nn import GCNConv
+#from torch_geometric.data import Data
+#from torch_geometric.nn import GCNConv
 
 import torch
 import torch.nn as nn
@@ -22,41 +22,41 @@ import torch.nn.functional as F
 from collections import defaultdict, deque
 
 
-class GraphCNN(BaseFeaturesExtractor):
-    """
-    :param observation_space: (gym.Space)
-    :param features_dim: (int) Number of features extracted.
-        This corresponds to the number of unit for the last layer.
-    """
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 64):
-        super(GraphCNN, self).__init__(observation_space, features_dim)
-        self.conv1 = GCNConv(1, 16)
-        self.conv2 = GCNConv(16, 8)
-        self.linear1 = nn.Linear(2384*8,1024)
-        self.linear2 = nn.Linear(1024,features_dim)
+# class GraphCNN(BaseFeaturesExtractor):
+#     """
+#     :param observation_space: (gym.Space)
+#     :param features_dim: (int) Number of features extracted.
+#         This corresponds to the number of unit for the last layer.
+#     """
+#     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 64):
+#         super(GraphCNN, self).__init__(observation_space, features_dim)
+#         self.conv1 = GCNConv(1, 16)
+#         self.conv2 = GCNConv(16, 8)
+#         self.linear1 = nn.Linear(2384*8,1024)
+#         self.linear2 = nn.Linear(1024,features_dim)
 
-    def forward(self,data):
-        repeat_num = data.shape[0]
-        size = data.shape[1]
-        data = data[0,:]
-        #First preprocess data for torch_geometric by adding reverse edges
-        edge_index = torch.empty(size*2,dtype=torch.int64)
-        for i in range(0,size,2):
-            edge_index[2*i:2*i+4] = torch.tensor([data[i],data[i+1],data[i+1],data[i]])
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        edge_index = edge_index.reshape(2,-1).to(device)
-        x = torch.ones(2384).unsqueeze(1).to(device)
-        #Now do graph convolutions
-        x = self.conv1(x,edge_index)
-        x = F.relu(x)
-        x = F.dropout(x)
-        x = self.conv2(x,edge_index)
-        x = x.reshape(1,-1)
-        x = self.linear1(x)
-        x = self.linear2(x)
-        if repeat_num > 1:
-            x = x.repeat((repeat_num,1))
-        return x
+#     def forward(self,data):
+#         repeat_num = data.shape[0]
+#         size = data.shape[1]
+#         data = data[0,:]
+#         #First preprocess data for torch_geometric by adding reverse edges
+#         edge_index = torch.empty(size*2,dtype=torch.int64)
+#         for i in range(0,size,2):
+#             edge_index[2*i:2*i+4] = torch.tensor([data[i],data[i+1],data[i+1],data[i]])
+#         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#         edge_index = edge_index.reshape(2,-1).to(device)
+#         x = torch.ones(2384).unsqueeze(1).to(device)
+#         #Now do graph convolutions
+#         x = self.conv1(x,edge_index)
+#         x = F.relu(x)
+#         x = F.dropout(x)
+#         x = self.conv2(x,edge_index)
+#         x = x.reshape(1,-1)
+#         x = self.linear1(x)
+#         x = self.linear2(x)
+#         if repeat_num > 1:
+#             x = x.repeat((repeat_num,1))
+#         return x
 
 class CoupledNetsEnv(gym.Env):
     def __init__(self,p,attack_degree):
@@ -67,9 +67,9 @@ class CoupledNetsEnv(gym.Env):
         self.num_envs = 1
         self.network_type = 'CFS-SW'
         self.net_a, self.net_b = cn.create_networks(self.network_type)
-        self.num_nodes_attacked = int(math.floor(random_removal_fraction * self.net_a.size()))
+        self.num_nodes_attacked = int(math.floor(random_removal_fraction * self.net_a.number_of_nodes()))
         print('Attack degree of {} on {} nodes.'.format(self.attack_degree,self.num_nodes_attacked))
-        self.action_space = spaces.MultiDiscrete([self.net_a.size() for i in range(self.attack_degree)])
+        self.action_space = spaces.MultiDiscrete([self.net_a.number_of_nodes() for i in range(self.attack_degree)])
         n = self.net_a.size() + self.net_b.size()
         m = max([self.net_a.number_of_nodes(),self.net_b.number_of_nodes()])
         self.observation_space = spaces.Box(low=0,high=2383,shape=(n*2,),dtype=np.int16) #TODO: adjacency on coupling
@@ -121,7 +121,6 @@ def my_predict(observation,model,num_samples,env): #temporarily here until I can
 
 if __name__ == '__main__':
     train = True
-    method = 'RL'
     if train:
         env = CoupledNetsEnv(0.90,1)
         observation = env.reset()
@@ -132,18 +131,21 @@ if __name__ == '__main__':
         #     features_extractor_kwargs=dict(features_dim=64),
         # )
         model = PPO("MlpPolicy", env,n_steps=50,batch_size = env.num_nodes_attacked , verbose=1,tensorboard_log="./logs/")
-        model.learn(total_timesteps=30000,tb_log_name = 'PPO_p10_singles',log_interval=10)
-        model.save("./models/PPO_p10_pairs_4")
+        model.learn(total_timesteps=1000,tb_log_name = 'real_p10_singles',log_interval=10)
+        model.save("./models/real_p10_singles")
         toc = time.perf_counter()
         print(f"Completed in {toc - tic:0.4f} seconds")
     else:
+        method = 'Random'
+        print('Attack method: {}'.format(method))
         tic = time.perf_counter()
         p_vals = np.linspace(0.65,0.995,70)
-        num_runs = 25
+        #p_vals = np.linspace(0.9,0.905,1)
+        num_runs = 3
         mean_rewards = []
         for p in p_vals:
             print('p =',p)
-            env = CoupledNetsEnv(p,3)
+            env = CoupledNetsEnv(p,1)
             if method == 'RL':
                 model = PPO.load('models/PPO_p05_singles_2',env=env)
                 num_samples = int(env.num_nodes_attacked / env.attack_degree)
@@ -160,7 +162,10 @@ if __name__ == '__main__':
                 for i in range(num_runs):
                     node_list = []
                     for j in range(env.num_nodes_attacked):
-                        node_list.append(env.action_space.sample()[0])
+                        rand_node = np.random.randint(env.net_b.number_of_nodes())
+                        while rand_node in node_list:
+                            rand_node = np.random.randint(env.net_b.number_of_nodes())
+                        node_list.append(rand_node)
                     _,reward,_,_ = env.step(node_list)
                     reward_p.append(reward)
                     observation = env.reset()
@@ -175,10 +180,20 @@ if __name__ == '__main__':
                     _,reward,_,_ = env.step(node_list)
                     reward_p.append(reward)
                     observation = env.reset()
+            elif method == 'File':
+                observation = env.reset()
+                reward_p = []
+                for i in range(num_runs):
+                    #get node list from file
+                    node_list = cn.get_nodes_from_file(3,p,env.net_a)
+                    node_list = [node-1 for node in node_list] #Shift from 1-index to 0-index
+                    _,reward,_,_ = env.step(node_list)
+                    reward_p.append(reward)
+                    observation = env.reset()
             mean_rewards.append(safe_mean(reward_p))
 
         data = np.stack([[1-p for p in p_vals],[r for r in mean_rewards]])
-        np.save('./output/triplet_attack_gym_p05',data)
+        np.save('./output/random_attack_ctl_defense',data)
         toc = time.perf_counter()
         print(f"Completed in {toc - tic:0.4f} seconds")
         import matplotlib.pyplot as plt
