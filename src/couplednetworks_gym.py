@@ -7,11 +7,16 @@ import math
 import gym
 from gym import spaces
 import sys
+from typing import Callable
+
 
 from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3 import PPO,A2C
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.utils import obs_as_tensor, safe_mean
+from stable_baselines3.common.utils import set_random_seed
 
 #from torch_geometric.data import Data
 #from torch_geometric.nn import GCNConv
@@ -68,7 +73,7 @@ class CoupledNetsEnv(gym.Env):
         self.network_type = 'CFS-SW'
         self.net_a, self.net_b = cn.create_networks(self.network_type)
         self.num_nodes_attacked = int(math.floor(random_removal_fraction * self.net_a.number_of_nodes()))
-        print('Attack degree of {} on {} nodes.'.format(self.attack_degree,self.num_nodes_attacked))
+        #print('Attack degree of {} on {} nodes.'.format(self.attack_degree,self.num_nodes_attacked))
         self.action_space = spaces.MultiDiscrete([self.net_a.number_of_nodes() for i in range(self.attack_degree)])
         n = self.net_a.size() + self.net_b.size()
         m = max([self.net_a.number_of_nodes(),self.net_b.number_of_nodes()])
@@ -119,20 +124,40 @@ def my_predict(observation,model,num_samples,env): #temporarily here until I can
             nodes.append(a)
     return nodes
 
+def make_CN_env(p: float, attack_degree: int, rank: int, seed: int = 0) -> Callable:
+    """
+    Utility function for multiprocessed env.
+    :param p: 1-p is the percentage of nodes to attack
+    :param attack_degree: the degree of node attack
+    :param seed: (int) the inital seed for RNG
+    :param rank: (int) index of the subprocess
+    :return: (Callable)
+    """
+    def _init() -> gym.Env:
+        env = CoupledNetsEnv(p,attack_degree)
+        env.seed(seed + rank)
+        return env
+    set_random_seed(seed)
+    return _init
+
 if __name__ == '__main__':
     train = True
     if train:
-        env = CoupledNetsEnv(0.90,1)
-        observation = env.reset()
+        #if no multiprocessing
+        #env = CoupledNetsEnv(0.90,1)
+        #if using multiprocessing
+        num_cpu = mlt.cpu_count()-1
+        env = SubprocVecEnv([make_CN_env(0.9,1,i) for i in range(num_cpu)])
         tic = time.perf_counter()
         #model = PPO('MlpPolicy',env,verbose=1,n_steps=5,batch_size=env.num_nodes_attacked)
         # policy_kwargs = dict(
         #     features_extractor_class=GraphCNN,
         #     features_extractor_kwargs=dict(features_dim=64),
         # )
-        model = PPO("MlpPolicy", env,n_steps=50,batch_size = env.num_nodes_attacked , verbose=1,tensorboard_log="./logs/")
-        model.learn(total_timesteps=1000,tb_log_name = 'real_p10_singles',log_interval=10)
-        model.save("./models/real_p10_singles")
+        #size of rollout buffer will be n_steps*batch_size*num_cpu
+        model = PPO("MlpPolicy", env,n_steps=10,batch_size = env.get_attr('num_nodes_attacked')[0], verbose=1,tensorboard_log="./logs/")
+        model.learn(total_timesteps=1000,tb_log_name = 'real_p10_singles_mp_test',log_interval=2)
+        model.save("./models/real_p10_singles_mp_test")
         toc = time.perf_counter()
         print(f"Completed in {toc - tic:0.4f} seconds")
     else:

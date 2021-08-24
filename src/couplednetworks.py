@@ -501,8 +501,8 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
             nodes_attacked_matlab = matlab.double([node+1 for node in nodes_attacked])
             coupled_nodes_matlab = matlab.double(coupled_nodes)
             giant_comp_size, MW_lost = eng.cn_runner_python(nodes_attacked_matlab,coupled_nodes_matlab,config_name,nargout=2)
-            #print("giant_comp_size:", giant_comp_size)
-            #print("MW_lost:",MW_lost)
+            print("giant_comp_size:", giant_comp_size)
+            print("MW_lost:",MW_lost)
             if p_values > 1 or (p_values == 1 and q_values == 1):
                 if output_gc_size is True:
                     y.append([p, giant_comp_size])
