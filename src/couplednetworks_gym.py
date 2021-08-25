@@ -12,7 +12,7 @@ from typing import Callable
 
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv,VecMonitor
 from stable_baselines3 import PPO,A2C
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.utils import obs_as_tensor, safe_mean
@@ -143,21 +143,17 @@ def make_CN_env(p: float, attack_degree: int, rank: int, seed: int = 0) -> Calla
 if __name__ == '__main__':
     train = True
     if train:
-        #if no multiprocessing
-        #env = CoupledNetsEnv(0.90,1)
-        #if using multiprocessing
-        num_cpu = mlt.cpu_count()-1
-        env = SubprocVecEnv([make_CN_env(0.9,1,i) for i in range(num_cpu)])
+        multiprocessing = False
+        if multiprocessing:
+            num_cpu = 8#mlt.cpu_count()-1
+            env = VecMonitor(SubprocVecEnv([make_CN_env(0.9,1,i) for i in range(num_cpu)]))
+            model = PPO("MlpPolicy", env,n_steps=5,batch_size = env.get_attr('num_nodes_attacked')[0], verbose=1,tensorboard_log="./logs/")
+        else:
+            env = CoupledNetsEnv(0.90,1)
+            model = PPO("MlpPolicy", env,n_steps=50,batch_size = env.num_nodes_attacked, verbose=1,tensorboard_log="./logs/")
         tic = time.perf_counter()
-        #model = PPO('MlpPolicy',env,verbose=1,n_steps=5,batch_size=env.num_nodes_attacked)
-        # policy_kwargs = dict(
-        #     features_extractor_class=GraphCNN,
-        #     features_extractor_kwargs=dict(features_dim=64),
-        # )
-        #size of rollout buffer will be n_steps*batch_size*num_cpu
-        model = PPO("MlpPolicy", env,n_steps=10,batch_size = env.get_attr('num_nodes_attacked')[0], verbose=1,tensorboard_log="./logs/")
-        model.learn(total_timesteps=1000,tb_log_name = 'real_p10_singles_mp_test',log_interval=2)
-        model.save("./models/real_p10_singles_mp_test")
+        model.learn(total_timesteps=1200,tb_log_name = 'p10_singles_sp_topo',log_interval=10)
+        #model.save("./models/p10_singles_sp_topo")
         toc = time.perf_counter()
         print(f"Completed in {toc - tic:0.4f} seconds")
     else:
