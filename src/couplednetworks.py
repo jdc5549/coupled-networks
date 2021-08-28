@@ -38,8 +38,6 @@ from operator import itemgetter
 import networkx as nx
 from networkx.readwrite import json_graph
 
-import h5py
-
 if sys.version_info < (2, 6):
     raise "Python 2.7 or greater required"
     sys.exit(-1)
@@ -495,14 +493,18 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
                 sys.exit(-1)
             
             import matlab.engine
+            #with matlab.engine.start_matlab() as eng:
             eng = matlab.engine.start_matlab()
             eng.addpath('./src/',nargout=0)
             eng.addpath('src/mexosi_v03',nargout=0)
             nodes_attacked_matlab = matlab.double([node+1 for node in nodes_attacked])
             coupled_nodes_matlab = matlab.double(coupled_nodes)
+            #future = eng.cn_runner_python(nodes_attacked_matlab,coupled_nodes_matlab,config_name,nargout=2,background=True)
+            #giant_comp_size, MW_lost = future.result()
             giant_comp_size, MW_lost = eng.cn_runner_python(nodes_attacked_matlab,coupled_nodes_matlab,config_name,nargout=2)
             print("giant_comp_size:", giant_comp_size)
             print("MW_lost:",MW_lost)
+
             if p_values > 1 or (p_values == 1 and q_values == 1):
                 if output_gc_size is True:
                     y.append([p, giant_comp_size])

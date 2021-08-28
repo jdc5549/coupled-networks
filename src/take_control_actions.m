@@ -24,7 +24,7 @@ comm_failed_set = [];
 % Check the mismatch before we start, just as a debug step
 mis_old = total_P_mismatch(ps);
 if abs(mis_old)>EPS
-    error('System not balanced on entry to take_control_actions');
+    disp('System not balanced on entry to take_control_actions');
 end
 
 % If we are to use the comm model do:
