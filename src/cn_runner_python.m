@@ -3,6 +3,7 @@ function [GC_size,MW_lost] = cn_runner(bus_outages,coupled_nodes,config_json)
 %  config_json - either a psoptions structure or a json file with
 %   options
 % bus outages - receive which buses to remove from python
+% coupled nodes - which nodes are coupled from python
 
 exp_id = 1;
 starting_run = '1';
@@ -97,47 +98,7 @@ end
 [is_blackout,~,MW_lost,p_out] = dcsimsep(ps,[],bus_outages,opt);
 GC_size = 1 - p_out;
 
-function coupled_nodes = get_coupled_nodes_from_file(exp_id, q_point,opt,n)
-%%q is defined in the opposite direction of p so at a q of 0.99 we want to return a list of 99% of 
-%the nodes in a network. This is the reason for taking 1-q_point.
-
-q_point = 1-q_point;  
-numOutagesInCouplingFile = 100; % TODO get this in opt.comm
-inverseStepSizeForCoupling = 100; % TODO get this in opt.comm
-minCouplingPoint = 0.01; % TODO get this in opt.comm
-
-% split_path = strsplit(opt.comm.comm_model,filesep);
-% relpath = split_path(1:length(split_path)-2);
-% relpath = sprintf('%s/', relpath{:});    % should give "coupled-networks/" root folder
-
-comm_file_name = [opt.comm.relpath,'data/coupled-nodes/coupled_node_',sprintf('%s',exp_id),'.csv.bz2']; % %s so exp_id gets converted to a string
-[~,name,~] = fileparts(comm_file_statusname);
-system_call = ['bzip2 -ckd ',comm_file_name,' > ','/tmp/',name];
-system(system_call); % unzip the file and put it in /tmp/
-comm_file_name = ['/tmp/',name];
-fprintf('Coupled nodes file name: %s\n', comm_file_name);
-coupled_nodes = csvread(comm_file_name,1,0);
-
-p_calc = numOutagesInCouplingFile - inverseStepSizeForCoupling*(q_point-minCouplingPoint);
-p_column = round(p_calc) - 1;  % 100-100*(0.99-0.01) - 1 = 1, round first otherwise you can get unexpected results
-% print "p_column " + str(p_column) + " from file: " + file_name
-if p_column > numOutagesInCouplingFile || p_column == 0 || n ~= 2383
-    randomRemovalFraction=1-q_point;  % Fraction of nodes to remove
-    numcoupled_nodes = floor(randomRemovalFraction * n);
-    coupled_nodes = randsample(n,numcoupled_nodes);
-    if opt.verbose == true
-        fprintf('No outages found for q_point %f at column %f for %f nodes, creating outage instead\n',(1-q_point),p_column,n);
-        fprintf('Size coupled_nodes list %d for run %d at q_point %f\n',length(coupled_nodes),run,(1-q_point));
-    end
-else
-    try
-        coupled_nodes = coupled_nodes(:,p_column);
-        coupled_nodes = coupled_nodes(coupled_nodes ~= 0);
-        num_coupled_nodes = length(coupled_nodes);
-        if opt.verbose == true
-            fprintf('Size coupled_nodes list %d for run %s, q_point %f, p_column %d\n',num_coupled_nodes,exp_id,1-q_point,p_column);
-        end
-    catch
-        error('Coupled node outage read error')
-    end
-end
+%% Cleanup temp files
+delete(strcat('/tmp/','*',pid,'.csv'));
+delete(strcat('/tmp/','coupled_node_',exp_id,'.csv'));
+delete(strcat('/tmp/','bus_outage_',exp_id,'.csv'));

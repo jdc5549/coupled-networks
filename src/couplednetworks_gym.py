@@ -18,63 +18,24 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.utils import obs_as_tensor, safe_mean
 from stable_baselines3.common.utils import set_random_seed
 
-#from torch_geometric.data import Data
-#from torch_geometric.nn import GCNConv
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import defaultdict, deque
 
-
-# class GraphCNN(BaseFeaturesExtractor):
-#     """
-#     :param observation_space: (gym.Space)
-#     :param features_dim: (int) Number of features extracted.
-#         This corresponds to the number of unit for the last layer.
-#     """
-#     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 64):
-#         super(GraphCNN, self).__init__(observation_space, features_dim)
-#         self.conv1 = GCNConv(1, 16)
-#         self.conv2 = GCNConv(16, 8)
-#         self.linear1 = nn.Linear(2384*8,1024)
-#         self.linear2 = nn.Linear(1024,features_dim)
-
-#     def forward(self,data):
-#         repeat_num = data.shape[0]
-#         size = data.shape[1]
-#         data = data[0,:]
-#         #First preprocess data for torch_geometric by adding reverse edges
-#         edge_index = torch.empty(size*2,dtype=torch.int64)
-#         for i in range(0,size,2):
-#             edge_index[2*i:2*i+4] = torch.tensor([data[i],data[i+1],data[i+1],data[i]])
-#         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#         edge_index = edge_index.reshape(2,-1).to(device)
-#         x = torch.ones(2384).unsqueeze(1).to(device)
-#         #Now do graph convolutions
-#         x = self.conv1(x,edge_index)
-#         x = F.relu(x)
-#         x = F.dropout(x)
-#         x = self.conv2(x,edge_index)
-#         x = x.reshape(1,-1)
-#         x = self.linear1(x)
-#         x = self.linear2(x)
-#         if repeat_num > 1:
-#             x = x.repeat((repeat_num,1))
-#         return x
-
 class CoupledNetsEnv(gym.Env):
     def __init__(self,p,attack_degree):
         super(CoupledNetsEnv,self).__init__()
+        self.p = p
         random_removal_fraction = 1 - p  # Fraction of nodes to remove
         self.attack_degree = attack_degree
         self.name = "CoupledNetsEnv-v0"
         self.num_envs = 1
         self.network_type = 'CFS-SW'
         self.net_a, self.net_b = cn.create_networks(self.network_type)
-        self.num_nodes_attacked = int(math.floor(random_removal_fraction * self.net_a.number_of_nodes()))
+        self.num_nodes_attacked = int(math.floor(random_removal_fraction * self.net_b.number_of_nodes()))
         #print('Attack degree of {} on {} nodes.'.format(self.attack_degree,self.num_nodes_attacked))
-        self.action_space = spaces.MultiDiscrete([self.net_a.number_of_nodes() for i in range(self.attack_degree)])
+        self.action_space = spaces.MultiDiscrete([self.net_b.number_of_nodes() for i in range(self.attack_degree)])
         n = self.net_a.size() + self.net_b.size()
         m = max([self.net_a.number_of_nodes(),self.net_b.number_of_nodes()])
         self.observation_space = spaces.Box(low=0,high=2383,shape=(n*2,),dtype=np.int16) #TODO: adjacency on coupling
@@ -141,85 +102,128 @@ def make_CN_env(p: float, attack_degree: int, rank: int, seed: int = 0) -> Calla
     return _init
 
 if __name__ == '__main__':
-    train = True
+    train = False
+    num_cpu = 35
     if train:
-        multiprocessing = False
-        if multiprocessing:
-            num_cpu = 8#mlt.cpu_count()-1
-            env = VecMonitor(SubprocVecEnv([make_CN_env(0.9,1,i) for i in range(num_cpu)]))
-            model = PPO("MlpPolicy", env,n_steps=5,batch_size = env.get_attr('num_nodes_attacked')[0], verbose=1,tensorboard_log="./logs/")
+        if num_cpu > 1:
+            env = VecMonitor(SubprocVecEnv([make_CN_env(0.9,3,i) for i in range(num_cpu)]))
+            model = PPO("MlpPolicy", env,n_steps=4,batch_size = env.get_attr('num_nodes_attacked')[0], verbose=1,tensorboard_log="./logs/")
         else:
             env = CoupledNetsEnv(0.90,1)
             model = PPO("MlpPolicy", env,n_steps=50,batch_size = env.num_nodes_attacked, verbose=1,tensorboard_log="./logs/")
         tic = time.perf_counter()
-        model.learn(total_timesteps=1200,tb_log_name = 'p10_singles_sp_topo',log_interval=10)
-        #model.save("./models/p10_singles_sp_topo")
+        model.learn(total_timesteps=5000,tb_log_name = 'p10_triplets_mp56_real',log_interval=1)
+        model.save("./models/p10_triplets_mp56_real")
         toc = time.perf_counter()
         print(f"Completed in {toc - tic:0.4f} seconds")
     else:
-        method = 'Random'
+        method = 'Heuristic'
         print('Attack method: {}'.format(method))
         tic = time.perf_counter()
         p_vals = np.linspace(0.65,0.995,70)
         #p_vals = np.linspace(0.9,0.905,1)
-        num_runs = 3
-        mean_rewards = []
-        for p in p_vals:
-            print('p =',p)
-            env = CoupledNetsEnv(p,1)
-            if method == 'RL':
-                model = PPO.load('models/PPO_p05_singles_2',env=env)
-                num_samples = int(env.num_nodes_attacked / env.attack_degree)
-                observation = env.reset()
-                reward_p = []
-                for i in range(num_runs):
-                    node_list = my_predict(observation,model,num_samples,env)
-                    _,reward,_,_ = env.step(node_list)
-                    reward_p.append(reward)
+        num_runs = 10
+        data = np.zeros((len(p_vals),num_runs+1))
+        data[:,0] = [1-p_val for p_val in p_vals]
+        if num_cpu > 1:
+            vec_envs = []
+            num_vec_envs = math.ceil(len(p_vals)/num_cpu)
+            for j in range(num_vec_envs):
+                print('{} of {}'.format(j+1,num_vec_envs))
+                num_envs = min([num_cpu,len(p_vals)-num_cpu*j])
+                env = VecMonitor(SubprocVecEnv([make_CN_env(p_vals[i],1,i) for i in range(j*num_cpu,j*num_cpu+num_envs)]))
+                if method == 'RL':
+                    print('Multiprocessing not supported for RL method')
+                    exit()
+                elif method == 'Random':
                     observation = env.reset()
-            elif method == 'Random':
-                observation = env.reset()
-                reward_p = []
-                for i in range(num_runs):
-                    node_list = []
-                    for j in range(env.num_nodes_attacked):
-                        rand_node = np.random.randint(env.net_b.number_of_nodes())
-                        while rand_node in node_list:
+                    for i in range(num_runs):
+                        node_lists = []
+                        for k in range(num_envs):
+                            node_list = []
+                            for l in range(env.get_attr('num_nodes_attacked',indices=k)[0]):
+                                rand_node = np.random.randint(env.get_attr('net_b',indices=0)[0].number_of_nodes())
+                                while rand_node in node_list:
+                                    rand_node = np.random.randint(env.get_attr('net_b',indices=0)[0].number_of_nodes())
+                                node_list.append(rand_node)
+                            node_lists.append(node_list)
+                        _,rewards,_,_ = env.step(node_lists)
+                        for k in range(num_envs):
+                            idx = np.where(p_vals == env.get_attr('p',indices=k)[0])[0][0]
+                            data[idx,i+1] = rewards[k]
+                            print("Run {}. p_in: {}, p_out: {}".format(i,1-p_vals[idx],data[idx,i+1]))
+                elif method == 'Heuristic':
+                    observation = env.reset()
+                    for i in range(num_runs):
+                        node_lists = []
+                        for k in range(num_envs):
+                            node_list = []
+                            node_by_deg = sorted(env.get_attr('net_b',indices=0)[0].degree, key=lambda x: x[1], reverse=True)
+                            for l in range(env.get_attr('num_nodes_attacked',indices=k)[0]):
+                                node_list.append(node_by_deg[l][0])
+                            node_lists.append(node_list)
+                        _,rewards,_,_ = env.step(node_lists)
+                        for k in range(num_envs):
+                            idx = np.where(p_vals == env.get_attr('p',indices=k)[0])[0][0]
+                            data[idx,i+1] = rewards[k]
+                            print("Run {}. p_in: {}, p_out: {}".format(i,1-p_vals[idx],data[idx,i+1]))
+        else:
+            for p in p_vals:
+                print('p =',p)
+                env = CoupledNetsEnv(p,3)
+                if method == 'RL':
+                    model = PPO.load('models/p10_triplets_mp56_real',env=env)
+                    num_samples = int(env.num_nodes_attacked / env.attack_degree)
+                    observation = env.reset()
+                    reward_p = []
+                    for i in range(num_runs):
+                        node_list = my_predict(observation,model,num_samples,env)
+                        _,reward,_,_ = env.step(node_list)
+                        reward_p.append(reward)
+                        observation = env.reset()
+                elif method == 'Random':
+                    observation = env.reset()
+                    reward_p = []
+                    for i in range(num_runs):
+                        node_list = []
+                        for j in range(env.num_nodes_attacked):
                             rand_node = np.random.randint(env.net_b.number_of_nodes())
-                        node_list.append(rand_node)
-                    _,reward,_,_ = env.step(node_list)
-                    reward_p.append(reward)
+                            while rand_node in node_list:
+                                rand_node = np.random.randint(env.net_b.number_of_nodes())
+                            node_list.append(rand_node)
+                        _,reward,_,_ = env.step(node_list)
+                        reward_p.append(reward)
+                        observation = env.reset()
+                elif method == 'Heuristic':
                     observation = env.reset()
-            elif method == 'Heuristic':
-                observation = env.reset()
-                reward_p = []
-                for i in range(num_runs):
-                    node_by_deg = sorted(env.net_a.degree, key=lambda x: x[1], reverse=True)
-                    node_list = []
-                    for j in range(0, env.num_nodes_attacked, 1):
-                        node_list.append(node_by_deg[j][0])
-                    _,reward,_,_ = env.step(node_list)
-                    reward_p.append(reward)
+                    reward_p = []
+                    for i in range(num_runs):
+                        node_by_deg = sorted(env.net_b.degree, key=lambda x: x[1], reverse=True)
+                        node_list = []
+                        for j in range(0, env.num_nodes_attacked, 1):
+                            node_list.append(node_by_deg[j][0])
+                        _,reward,_,_ = env.step(node_list)
+                        reward_p.append(reward)
+                        observation = env.reset()
+                elif method == 'File':
                     observation = env.reset()
-            elif method == 'File':
-                observation = env.reset()
-                reward_p = []
-                for i in range(num_runs):
-                    #get node list from file
-                    node_list = cn.get_nodes_from_file(3,p,env.net_a)
-                    node_list = [node-1 for node in node_list] #Shift from 1-index to 0-index
-                    _,reward,_,_ = env.step(node_list)
-                    reward_p.append(reward)
-                    observation = env.reset()
-            mean_rewards.append(safe_mean(reward_p))
+                    reward_p = []
+                    for i in range(num_runs):
+                        #get node list from file
+                        node_list = cn.get_nodes_from_file(3,p,env.net_a)
+                        node_list = [node-1 for node in node_list] #Shift from 1-index to 0-index
+                        _,reward,_,_ = env.step(node_list)
+                        reward_p.append(reward)
+                        observation = env.reset()
+                mean_rewards.append(safe_mean(reward_p))
 
-        data = np.stack([[1-p for p in p_vals],[r for r in mean_rewards]])
-        np.save('./output/random_attack_ctl_defense',data)
+        np.save('./output/heuristic_attack_ctl_defense',data)
         toc = time.perf_counter()
         print(f"Completed in {toc - tic:0.4f} seconds")
         import matplotlib.pyplot as plt
         # plot the result
-        plt.plot([1-p for p in p_vals], [r for r in mean_rewards], 'bo')  # 'rx' for red x 'g+' for green + marker
+        mean_rewards = [np.mean(data[i][1:]) for i in range(len(p_vals))]
+        plt.plot(data[:,0], [r for r in mean_rewards], 'bo')  # 'rx' for red x 'g+' for green + marker
         plt.xlabel('Percent of Nodes Attacked')
         plt.ylabel('Percent of Nodes Down After Cascade')
         #plt.plot(x, average_p_half, 'bo')  # 'rx' for red x 'g+' for green + marker

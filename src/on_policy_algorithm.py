@@ -121,7 +121,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 )
         else:
             self.rollout_buffer = buffer_cls(
-                self.n_steps*self.n_envs,
+                self.n_steps,
                 self.observation_space,
                 self.action_space,
                 self.device,
@@ -173,22 +173,22 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 self.policy.reset_noise(env.num_envs)
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
+                obs_tensor = obs_as_tensor(self._last_obs, self.device)
                 if env.get_attr('name')[0] == "CoupledNetsEnv-v0":
                     net_a_size = env.get_attr('net_a')[0].size() 
-                    obs_tensor = obs_as_tensor(self._last_obs, self.device)
                     latent_pi,_,latent_sde = self.policy._get_latent(obs_tensor)
                     act_dist = self.policy._get_action_dist_from_latent(latent_pi, latent_sde)
                     attack_degree = env.get_attr('attack_degree')[0]
                     num_samples = int(env.get_attr('num_nodes_attacked')[0] / attack_degree)
                     actions = th.stack([dist.sample(sample_shape=(num_samples,)).squeeze() for dist in act_dist.distribution],dim=1)
                     #Replace any duplicate nodes
-                    max_retry = 1000
+                    max_retry = 100
                     if len(actions.shape) < 3:
-                        actions = actions.unsqueeze(0)
-                    for i in range(actions.shape[0]):
+                        actions = actions.unsqueeze(-1)
+                    for i in range(actions.shape[-1]):
                         nodes = []
-                        for j in range(actions.shape[1]):
-                            act = actions[i][:][j].cpu().numpy()
+                        for j in range(actions.shape[0]):
+                            act = actions[j,:,i].cpu().numpy()
                             overlap = any(a in nodes for a in act)
                             retry = 0
                             while overlap:
@@ -196,17 +196,17 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                                     act = th.stack([dist.sample() for dist in act_dist.distribution],dim=1).cpu().numpy()[0]
                                 else:
                                     act = env.action_space.sample()
-                                actions[i][:][j] = th.tensor(act).to(self.device)
+                                actions[j,:,i] = th.tensor(act).to(self.device)
                                 overlap = any(a in nodes for a in act)
                                 retry += 1
                             for a in act:
                                 nodes.append(a) 
                     repeat_obs = obs_tensor.repeat((num_samples,1))
-                    actions = th.reshape(actions,(obs_tensor.shape[0],num_samples,attack_degree))
+                    actions = th.reshape(actions,(obs_tensor.shape[0]*num_samples,attack_degree))
                     values,log_probs,_ = self.policy.evaluate_actions(repeat_obs,actions)
-                    actions = np.reshape(actions,(obs_tensor.shape[0],-1))
-                    values = np.reshape(values,(obs_tensor.shape[0],-1,1))
-                    log_probs = np.reshape(log_probs,(obs_tensor.shape[0],-1))
+                    actions = th.reshape(actions,(obs_tensor.shape[0],-1))
+                    values = th.reshape(values,(obs_tensor.shape[0],-1,1))
+                    log_probs = th.reshape(log_probs,(obs_tensor.shape[0],-1))
                 else:
                     actions, values, log_probs = self.policy.forward(obs_tensor)
             actions = actions.cpu().numpy()

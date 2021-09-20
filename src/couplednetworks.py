@@ -444,7 +444,6 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
     global nodes
     global critical_node
     global coupled_nodes
-
     if real is True:  # real == True enables the use of the external DC power flow simulator.
         if p_values > 1 and q_values > 1:
             print('Either p or q must equal 1 since only p or q sweep can be done at once. Configuration adjustment required to run.')
@@ -502,8 +501,8 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
             #future = eng.cn_runner_python(nodes_attacked_matlab,coupled_nodes_matlab,config_name,nargout=2,background=True)
             #giant_comp_size, MW_lost = future.result()
             giant_comp_size, MW_lost = eng.cn_runner_python(nodes_attacked_matlab,coupled_nodes_matlab,config_name,nargout=2)
-            print("giant_comp_size:", giant_comp_size)
-            print("MW_lost:",MW_lost)
+            #print("giant_comp_size:", giant_comp_size)
+            #print("MW_lost:",MW_lost)
 
             if p_values > 1 or (p_values == 1 and q_values == 1):
                 if output_gc_size is True:
@@ -1048,6 +1047,30 @@ def create_networks(network_type):
             print("Scaling exponent network_b " + str(fit.power_law.alpha))
     return [network_a, network_b]
 
+def plot_network_degree_histogram():
+    [network_a, network_b] = create_networks(network_type)
+    node_by_deg_a = sorted(network_a.degree, key=lambda x: x[1], reverse=True)
+    min_deg_a = node_by_deg_a[-1][1]
+    max_deg_a = node_by_deg_a[0][1]
+    hist_a = np.zeros([max_deg_a-min_deg_a+1])
+    for i in range(len(node_by_deg_a)):
+        degree = node_by_deg_a[i][1]
+        hist_a[degree - min_deg_a] += 1
+
+    node_by_deg_b = sorted(network_b.degree, key=lambda x: x[1], reverse=True)
+    min_deg_b = node_by_deg_b[-1][1]
+    max_deg_b = node_by_deg_b[0][1]
+    hist_b = np.zeros([max_deg_b-min_deg_b+1])
+    for i in range(len(node_by_deg_b)):
+        degree = node_by_deg_b[i][1]
+        hist_b[degree-min_deg_b] += 1
+
+    import matplotlib.pyplot as plt
+    fig, (ax1,ax2) = plt.subplots(2)
+    fig.suptitle('')
+    ax1.scatter(range(min_deg_a,max_deg_a+1),hist_a)
+    ax2.scatter(range(min_deg_b,max_deg_b+1),hist_b)
+    plt.show()
 
 def main():
     [network_a, network_b] = create_networks(network_type)
