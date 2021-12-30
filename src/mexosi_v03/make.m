@@ -57,8 +57,8 @@ mexopts  = '-v';
 %     mexopts, path_to_cbc, path_to_cbc, path_to_cbc, cbc_libs);
 
 % updated call for Matlab 2015a
-cmd = sprintf('mex %s -largeArrayDims -I%s/include mexosi.cpp ''LDFLAGS=$LDFLAGS -Wl'' -L%s/lib %s',...
-    mexopts, path_to_cbc, path_to_cbc, cbc_libs);
+%cmd = sprintf('mex %s -largeArrayDims -I%s/include mexosi.cpp ''LDFLAGS=$LDFLAGS -Wl'' -L%s/lib %s',...
+%    mexopts, path_to_cbc, path_to_cbc, cbc_libs);
 
 % updated call for Matlab 2019a
 cmd = sprintf('mex %s -largeArrayDims -I%s/include mexosi.cpp -L%s/lib %s',...

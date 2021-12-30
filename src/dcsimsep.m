@@ -136,7 +136,7 @@ dt = 10.00; % This initial time step sets the quantity of initial gen ramping.
 while t < t_max
     % Step 3. Find sub-grids in the network and check for major separation
     [sep,sub_grids,n_sub,p_out,busessep] = check_separation(ps,opt.sim.stop_threshold,opt.verbose);
-        
+
     % Step 4. redispatch & run the power flow
     %  if there are new islands, redispatch the generators
     if n_sub>n_sub_old
