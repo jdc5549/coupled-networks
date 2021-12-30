@@ -59,6 +59,7 @@ else
 end
 % Pre-process the data
 n = size(ps.bus,1);
+disp(n)
 Pd0 = ps.shunt(:,C.sh.P).*ps.shunt(:,C.sh.factor);
 Pd0_sum = sum(Pd0);
 

@@ -1,5 +1,5 @@
 function ps = take_control_actions(ps,sub_grids,ramp_rate,dt,it_no,opt)
-% usage: ps = take_control_actions(ps,sub_grids,ramp_rate,dt,it_no,opt)
+% usage: ps = take_control_actions( ,sub_grids,ramp_rate,dt,it_no,opt)
 %
 % Compute and implement emergency control actions.
 %  Interfaces with comm model, if requested in the options

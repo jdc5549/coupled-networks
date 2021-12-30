@@ -31,6 +31,8 @@ import sys
 import time
 import numpy as np
 import traceback
+from contextlib import suppress
+
 
 from collections import defaultdict, deque
 from operator import itemgetter
@@ -45,21 +47,28 @@ if sys.version_info < (2, 6):
 """
 Grab the command line arguments.
 """
-parser = argparse.ArgumentParser(description='Coupled Network Model')
-parser.add_argument('mpid', metavar='MATLAB_PID', type=int, nargs=1, help='process ID from MATLAB, ' +
-    'if running without MATLAB use -1 as a command line argument')
-parser.add_argument('cfs_iter', metavar='CFS_iteration', type=int, nargs=1, help='iteration from MATLAB, ' +
-    'if running without MATLAB use -1 as a command line argument')
-parser.add_argument('percent_removed', metavar='percent_removed', type=float, nargs=1, help='Percent of nodes removed ' +
-   'if running without MATLAB use -1 as a command line argument')
-parser.add_argument('config_name', metavar='config_name', type=str, nargs=1, help='Name and location of config.json file')
-parser.add_argument('r_num', default=-1, metavar='replicate_number', type=int, nargs='?', help='Optional replicate number if running in batch mode')
-args = parser.parse_args()
-mpid = args.mpid[0]
-cfs_iter = args.cfs_iter[0]
-percent_removed = args.percent_removed[0]
-config_name = args.config_name[0]
-r_num = args.r_num
+#parser = argparse.ArgumentParser(description='Coupled Network Model')
+# parser.add_argument('mpid', metavar='MATLAB_PID', type=int, nargs=1, help='process ID from MATLAB, ' +
+#     'if running without MATLAB use -1 as a command line argument')
+# parser.add_argument('cfs_iter', metavar='CFS_iteration', type=int, nargs=1, help='iteration from MATLAB, ' +
+#     'if running without MATLAB use -1 as a command line argument')
+# parser.add_argument('percent_removed', metavar='percent_removed', type=float, nargs=1, help='Percent of nodes removed ' +
+#    'if running without MATLAB use -1 as a command line argument')
+#parser.add_argument('config_name', metavar='config_name', type=str, nargs=1, help='Name and location of config.json file')
+#parser.add_argument('r_num', default=-1, metavar='replicate_number', type=int, nargs='?', help='Optional replicate number if running in batch mode')
+#args = parser.parse_args()
+
+# mpid = args.mpid[0]
+# cfs_iter = args.cfs_iter[0]
+# percent_removed = args.percent_removed[0]
+# config_name = args.config_name[0]
+# r_num = args.r_num
+
+mpid = -1
+cfs_iter = -1
+percent_removed = -1
+r_num = -1
+config_name = 'config/config_cn_runner_test_intermediate_random.json'
 
 """
 Read from the configuration file.
@@ -503,27 +512,28 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
             giant_comp_size, MW_lost = eng.cn_runner_python(nodes_attacked_matlab,coupled_nodes_matlab,config_name,nargout=2)
             #print("giant_comp_size:", giant_comp_size)
             #print("MW_lost:",MW_lost)
+            y.append([p,1-giant_comp_size])
 
-            if p_values > 1 or (p_values == 1 and q_values == 1):
-                if output_gc_size is True:
-                    y.append([p, giant_comp_size])
-                else:
-                    if giant_comp_size > threshold:
-                        y.append([p, 1])
-                    else:
-                        result = 0
-                        y.append([p, 0])
-                if output_result_to_DB is True:
-                    write_result(run, p, nodes_attacked, initial_nodes_attacked, result, dbh)
-            else:  # TODO, the q-sweep capability should be streamlined
-                if output_gc_size is True:
-                    y.append([q_point, (float(giant_comp_size) / n)])
-                else:
-                    if giant_comp_size > threshold:
-                        y.append([q_point, 1])
-                    else:
-                        result = 0
-                        y.append([q_point, 0])
+            # if p_values > 1 or (p_values == 1 and q_values == 1):
+            #     if output_gc_size is True:
+            #         y.append([p, giant_comp_size])
+            #     else:
+            #         if giant_comp_size > threshold:
+            #             y.append([p, 1])
+            #         else:
+            #             result = 0
+            #             y.append([p, 0])
+            #     if output_result_to_DB is True:
+            #         write_result(run, p, nodes_attacked, initial_nodes_attacked, result, dbh)
+            # else:  # TODO, the q-sweep capability should be streamlined
+            #     if output_gc_size is True:
+            #         y.append([q_point, (float(giant_comp_size) / n)])
+            #     else:
+            #         if giant_comp_size > threshold:
+            #             y.append([q_point, 1])
+            #         else:
+            #             result = 0
+            #             y.append([q_point, 0])
     else:  # If real is false then only simulate topological cascades.
         if p_values > 1 and q_values > 1:
             print('Either p or q must equal 1 since only p or q sweep can be done at once. Configuration adjustment required to run.')
@@ -574,7 +584,6 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
             initial_nodes_attacked = []
             # if output_result_to_DB is True or verbose is True:
             initial_nodes_attacked.extend(nodes_attacked)
-
             for node in nodes_attacked:
                     if node in coupled_nodes:
                         coupled_nodes_attacked.extend([node])
@@ -676,7 +685,6 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
                 conn_comp0 = conn_comp[0]  # conn_comp of the new network
                 giant_comp_size = len(conn_comp0)
             logger.debug("Number of CC sub-graphs: " + str(len(conn_comp)) + ", Nodes in giant component: " + str(giant_comp_size))
-
             # gmccb is only used for verification
             # gmccb = nx.connected_component_subgraphs(network_b_copy)
             # if not gmccb:  # check if gmccb is empty
@@ -689,7 +697,7 @@ def check_for_failure(network_a, network_b, dbh, run, y, rl_attack=None):
             result = 1  # for passing to write_result
             if p_values > 1 or (p_values == 1 and q_values == 1):
                 if output_gc_size is True:
-                    y.append([p, (float(giant_comp_size) / n)])
+                    y.append([p, (1 - float(giant_comp_size) / n)])
                 else:
                     if giant_comp_size > threshold:
                         y.append([p, 1])
@@ -923,8 +931,10 @@ def get_network_from_file(network_name):
     return network
 
 
-def make_comms(network_b, copy):
+def make_comms(network_b, copy,num_nodes=None):
     global n
+    if num_nodes is None:
+        num_nodes = n
     if random_rewire_prob == -1:
         degree_sequence = sorted(nx.degree(network_b).values(), reverse=True)
         network_a = nx.gnerators.configuration_model(degree_sequence)
@@ -952,13 +962,15 @@ def make_comms(network_b, copy):
                 network_a.remove_edge(u, v)
                 network_a.add_edge(u, w)
     if copy is True:
-        mapping = dict(zip(network_a.nodes(), range(1, n + 1)))  # 2384 for Polish, 4942 for western. relabel the nodes to start at 1 like network_a
+        mapping = dict(zip(network_a.nodes(), range(1, num_nodes + 1)))  # 2384 for Polish, 4942 for western. relabel the nodes to start at 1 like network_a
         network_a = nx.relabel_nodes(network_a, mapping)
     return network_a
 
 
-def create_networks(network_type):
+def create_networks(network_type,num_nodes=None):
     global critical_node
+    if num_nodes is None:
+        num_nodes = n
     if network_from_file is True:
         network_a = get_network_from_file(comm_network_location)
         # network_a.name = comm_network_location
@@ -973,24 +985,25 @@ def create_networks(network_type):
     else:
         if network_type == 'ER':
             # Erdos-Renyi random graphs
-            network_a = nx.gnp_random_graph(n, ep)
-            network_b = nx.gnp_random_graph(n, ep)
+            network_a = nx.generators.random_graphs.gnp_random_graph(num_nodes, ep)
+            network_b = nx.generators.random_graphs.gnp_random_graph(num_nodes, ep)
+
         elif network_type == 'RR':
             # random regular graphs
-            network_a = nx.random_regular_graph(int(k), n)
-            network_b = nx.random_regular_graph(int(k), n)
+            network_a = nx.random_regular_graph(int(k), num_nodes)
+            network_b = nx.random_regular_graph(int(k), num_nodes)
         elif network_type == 'SF':
             # Scale free networks
             # m==2 gives <k>==4, for this lambda/gamma is always 3
-            network_a = nx.barabasi_albert_graph(n, 2)
-            network_b = nx.barabasi_albert_graph(n, 2)
+            network_a = nx.barabasi_albert_graph(num_nodes, 2)
+            network_b = nx.barabasi_albert_graph(num_nodes, 2)
             if random_rewire_prob != -1:
-                network_a = make_comms(network_a, False)
-                network_b = make_comms(network_b, False)
+                network_a = make_comms(network_a, False,num_nodes=num_nodes)
+                network_b = make_comms(network_b, False,num_nodes=num_nodes)
         elif network_type == 'Lattice':
-            l = math.sqrt(n)
+            l = math.sqrt(num_nodes)
             if(n % l != 0):
-                print("Number of nodes, " + str(n) + ", not square (i.e. sqrt(n) has a remainder) for lattice. Adjust n and retry.")
+                print("Number of nodes, " + str(num_nodes) + ", not square (i.e. sqrt(n) has a remainder) for lattice. Adjust n and retry.")
                 raise
                 sys.exit(-1)
             l = int(l)
@@ -1003,7 +1016,7 @@ def create_networks(network_type):
             '''
             path = relpath + "data/power-grid/network_Polish_2383nodes_2.422deg_0.0rw_12345seed.edgelist"
             network_b = nx.read_edgelist(path, nodetype=int)
-            mapping = dict(zip(network_b.nodes(), range(1, n + 1)))  # renumber the nodes to start at 1 for MATLAB
+            mapping = dict(zip(network_b.nodes(), range(1, num_nodes + 1)))  # renumber the nodes to start at 1 for MATLAB
             network_b = nx.relabel_nodes(network_b, mapping)
             '''make the comms network'''
             if cfs_iter == 1 or real is False:
@@ -1025,7 +1038,7 @@ def create_networks(network_type):
 
     # Order the nodes of the networks randomly
     if real is False and shuffle_networks is True:
-        randomlist = range(1, n + 1)  # node must names start at 1 for MATLAB, remapping to start at 1 done above
+        randomlist = np.arange(num_nodes).tolist()  # node must names start at 1 for MATLAB, remapping to start at 1 done above
         random.shuffle(randomlist)
         mapping = dict(zip(network_a.nodes(), randomlist))
         network_a = nx.relabel_nodes(network_a, mapping)
@@ -1058,6 +1071,7 @@ def plot_network_degree_histogram():
         hist_a[degree - min_deg_a] += 1
 
     node_by_deg_b = sorted(network_b.degree, key=lambda x: x[1], reverse=True)
+
     min_deg_b = node_by_deg_b[-1][1]
     max_deg_b = node_by_deg_b[0][1]
     hist_b = np.zeros([max_deg_b-min_deg_b+1])
@@ -1065,15 +1079,21 @@ def plot_network_degree_histogram():
         degree = node_by_deg_b[i][1]
         hist_b[degree-min_deg_b] += 1
 
+    degrees = [node[1] for node in network_b.degree]
+    print(np.mean(degrees))
+    print(np.std(degrees))
+
     import matplotlib.pyplot as plt
     fig, (ax1,ax2) = plt.subplots(2)
     fig.suptitle('')
     ax1.scatter(range(min_deg_a,max_deg_a+1),hist_a)
+    ax1.set_title('comm')
     ax2.scatter(range(min_deg_b,max_deg_b+1),hist_b)
+    ax2.set_title('power')
     plt.show()
 
 def main():
-    [network_a, network_b] = create_networks(network_type)
+    exit()
     network_a_copy = network_a.copy()
     network_b_copy = network_b.copy()
     comm_status_filename = '/tmp/comm_status_' + str(mpid) + '.csv'
