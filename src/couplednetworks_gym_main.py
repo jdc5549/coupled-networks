@@ -182,7 +182,7 @@ if __name__ == '__main__':
     parser.add_argument("--ego_model_dir",default=None,type=str,help='dir where nn model to load is for the ego agents')
     parser.add_argument("--exploiter_model_dir",default=None,type=str,help='dir where nn model to load is for the exploiter agents')
     parser.add_argument("--num_cpu",default=1,type=int,help='The number of parallel environments to use. Default 1')
-    parser.add_argument("--p",default=0.1,type=float,help='Proportion of total nodes to be attacked/defended. Default 0.1')
+    parser.add_argument("--p",default=0.1,type=float,help='Fraction of total nodes to be attacked/defended. Default 0.1')
     parser.add_argument("--degree",default=1,type=int,help='Number of nodes selected by the agent policy at a time. Default 1.')
     parser.add_argument("--net_type",default='SF',type=str,help='Strategy for network creation. Use "SF" for random net, and "File" to load the network in "net_file".')
     parser.add_argument("--net_size",default=10,type=int,help='Number of nodes in the power network.')
@@ -192,7 +192,7 @@ if __name__ == '__main__':
     parser.add_argument("--tabular_q",default=False,type=bool,help='Use tabular Q-learning instead of neural network Q learning')
     parser.add_argument("--nash_eqs_dir",default=None,type=str,help='Directory where Nash EQ benchmarks are stored')
     parser.add_argument("--test_nets_dir",default=None,type=str,help='Directory where the network topologies for testing are stored')
-    parser.add_argument("--cn_config",default='config/config_cn_runner_test_intermediate_random.json',type=str,help='Config file for the coupled network simulator')
+    parser.add_argument("--cn_config",default='config/config.json',type=str,help='Config file for the coupled network simulator')
     parser.add_argument("--exp_name",default='my_exp',type=str,help='Name of experiment that will be associated with log and model files.')
 
     args = parser.parse_args()

@@ -2,9 +2,9 @@ import gambit
 import numpy as np
 from couplednetworks_gym_main import CoupledNetsEnv2
 
-def create_random_nets(save_dir,num_nodes,show=False):  
+def create_random_nets(save_dir,num_nodes,num2gen=10,show=False):  
     random.seed(np.random.randint(10000))
-    for i in range(10):
+    for i in range(num2gen):
         [network_a, network_b] = create_networks('SF',num_nodes=num_nodes)
         f = save_dir + 'net_{}.edgelist'.format(i)
         nx.write_edgelist(network_b,f)
@@ -66,13 +66,14 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Network Generation Args')
     parser.add_argument("--num_nodes",default='')
+    parser.add_argument("--num2gen",type=int,default=10)
     parser.add_argument("--net_save_dir",default='data/networks/generated/',type=str,help='Directory where the network topologies will be saved.')
     parser.add_argument("--nash_eqs_dir",default=None,type=str,help='Directory where Nash EQ benchmarks will be written. If None (default), then does not calculate Nash EQs.')
     parser.add_argument("--p",default=0.1,type=float,help='If calculating Nash EQs, the percent of nodes to be attacked/defended.')
 
     if args.net_save_dir[-1] != '/':
         args.net_save_dir += '/'
-    create_random_nets(args.save_dir,args.num_nodes)
+    create_random_nets(args.save_dir,args.num_nodes,num2gen=args.num2gen)
     if args.nash_eqs_dir is not None:
         if args.nash_eqs_dir[-1] != '/':
             args.nash_eqs_dir += '/'
