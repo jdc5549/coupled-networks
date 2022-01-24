@@ -1,8 +1,14 @@
 import gambit
 import numpy as np
 from couplednetworks_gym_main import CoupledNetsEnv2
+from couplednetworks import create_networks
+from marl.tools import ncr
+import networkx as nx
+import time
+import os
 
 def create_random_nets(save_dir,num_nodes,num2gen=10,show=False):  
+    import random
     random.seed(np.random.randint(10000))
     for i in range(num2gen):
         [network_a, network_b] = create_networks('SF',num_nodes=num_nodes)
@@ -30,7 +36,6 @@ def get_nash_eqs(env):
     num_nodes_attacked = env.num_nodes_attacked
     net_size = env.net_b.number_of_nodes()
     num_actions = ncr(net_size,num_nodes_attacked)
-
     U = np.zeros([num_actions,num_actions],dtype=gambit.Rational)
     curr_action = [i for i in range(num_nodes_attacked)]
     last_action = [i for i in range(net_size-1,net_size-num_nodes_attacked-1,-1)]
@@ -65,23 +70,29 @@ def get_nash_eqs(env):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Network Generation Args')
-    parser.add_argument("--num_nodes",default='')
+    parser.add_argument("--num_nodes",type=int,default=100)
     parser.add_argument("--num2gen",type=int,default=10)
     parser.add_argument("--net_save_dir",default='data/networks/generated/',type=str,help='Directory where the network topologies will be saved.')
     parser.add_argument("--nash_eqs_dir",default=None,type=str,help='Directory where Nash EQ benchmarks will be written. If None (default), then does not calculate Nash EQs.')
     parser.add_argument("--p",default=0.1,type=float,help='If calculating Nash EQs, the percent of nodes to be attacked/defended.')
+    args = parser.parse_args()
 
     if args.net_save_dir[-1] != '/':
         args.net_save_dir += '/'
-    create_random_nets(args.save_dir,args.num_nodes,num2gen=args.num2gen)
+    full_dir = args.net_save_dir + f'SF_{args.num_nodes}n_2.422deg/'
+    if not os.path.isdir(full_dir):
+        os.mkdir(full_dir)
+    create_random_nets(full_dir,args.num_nodes,num2gen=args.num2gen)
     if args.nash_eqs_dir is not None:
         if args.nash_eqs_dir[-1] != '/':
             args.nash_eqs_dir += '/'
+        if not os.path.isdir(args.nash_eqs_dir):
+            os.mkdir(args.nash_eqs_dir)
         tic = time.perf_counter()
-        for f in os.listdir(args.net_save_dir):
-            env = CoupledNetsEnv2(args.p,args.p,'File',filename = os.path.join(args.net_save_dir,f))
+        for i,f in enumerate(os.listdir(full_dir)):
+            env = CoupledNetsEnv2(args.num_nodes,args.p,args.p,'File',filename = os.path.join(full_dir,f))
             eqs = get_nash_eqs(env)
-            f = args.nash_eqs_dir + 'eq_{}'.format(i)
+            f = args.nash_eqs_dir + f'eq_{i}'
             np.save(f,eqs)
         toc = time.perf_counter()
         print(f"Completed in {toc - tic:0.4f} seconds")
