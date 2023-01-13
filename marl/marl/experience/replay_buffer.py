@@ -11,7 +11,7 @@ from ..tools import seq2unique_transition
 
 
 transition_type = {
-    "FFTransition" : ['observation', 'action', 'reward', 'next_observation', 'done_flag'],
+    "FFTransition" : ['observation', 'action', 'reward', 'next_observation', 'done_flag','info'],
     "RNNTransition" : ['observation','h0', 'action', 'reward', 'done_flag', 'seq_len']
 }
 
@@ -34,7 +34,7 @@ class ReplayMemory(Experience):
         self.transition_type = transition_type
 
     def push(self, *transition):
-        assert len(transition_tuple[self.transition_type]._fields)==len(transition) , "Invalid number of arguments"
+        assert len(transition_tuple[self.transition_type]._fields)==len(transition) , f"Invalid number of arguments (Got {len(transition)}, expected {len(transition_tuple[self.transition_type]._fields)})"
         if len(self.memory) < self.capacity:
             self.memory.append(None)
         self.memory[self.position] = transition_tuple[self.transition_type](*transition)

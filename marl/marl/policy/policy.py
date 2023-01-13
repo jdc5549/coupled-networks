@@ -19,28 +19,28 @@ class Policy(object):
         return _std_repr(self)
     
     def random_action(self, observation=None,num_actions=1):
-        if len(observation.shape) < 3:
-            if num_actions == 1:
-                return self.all_actions[self.action_space.sample()]
-            else:
-                actions = []
-                for i in range(num_actions):    
-                    a = self.action_space.sample()
-                    while a in actions:
-                        a = self.action_space.sample()
-                    actions.append(self.all_actions[a])
-                return actions
+        #if len(observation.shape) < 3:
+        if num_actions == 1:
+            return self.all_actions[self.action_space.sample()]
         else:
-            actions_list = []
-            for j in range(observation.shape[0]):
-                actions = []
-                for i in range(num_actions):    
+            actions = []
+            for i in range(num_actions):    
+                a = self.action_space.sample()
+                while a in actions:
                     a = self.action_space.sample()
-                    while a in actions:
-                        a = self.action_space.sample()
-                    actions.append(self.all_actions[a])
-                actions_list.append(actions)
-            return actions_list
+                actions.append(self.all_actions[a])
+            return actions
+        # else:
+        #     actions_list = []
+        #     for j in range(observation.shape[0]):
+        #         actions = []
+        #         for i in range(num_actions):    
+        #             a = self.action_space.sample()
+        #             while a in actions:
+        #                 a = self.action_space.sample()
+        #             actions.append(self.all_actions[a])
+        #         actions_list.append(actions)
+        #     return actions_list
 
     @classmethod
     def make(cls, id, **kwargs):

@@ -108,7 +108,10 @@ class FeaturizedACAgent(PGAgent):
         actor_policy = StochasticPolicy(actor_model,observation_space=observation_space,action_space=action_space,all_actions=self.all_actions)
         PGAgent.__init__(self, critic=None, actor_policy=actor_policy, actor_model=actor_model, observation_space=observation_space, action_space=action_space, experience=experience, exploration=exploration, lr_actor=lr_actor, gamma=gamma, batch_size=batch_size, name=name)
         self.train = train
-        self.critic = DQNCriticAgent(qmodel=critic_model, observation_space=observation_space, action_space=action_space, experience=self.experience, gamma=self.gamma, lr=lr_critic, batch_size=self.batch_size, target_update_freq=self.target_update_freq,act_degree=act_degree)
+        if critic_model is not None:
+            self.critic = DQNCriticAgent(qmodel=critic_model, observation_space=observation_space, action_space=action_space, experience=self.experience, gamma=self.gamma, lr=lr_critic, batch_size=self.batch_size, target_update_freq=self.target_update_freq,act_degree=act_degree)
+        else:
+            self.critic = QTableAgent(observation_space=observation_space, action_space=action_space,experience=self.experience, gamma=self.gamma, lr=lr_critic, batch_size=self.batch_size, target_update_freq=self.target_update_freq,act_degree=act_degree)
         self.actor_optimizer = optim.Adam(self.policy.model.parameters(), lr=self.lr)
         if model is not None:
             self.policy.load(model)
@@ -121,20 +124,32 @@ class FeaturizedACAgent(PGAgent):
         #print(action)
         feat_actions = []
         if type(action[0]) == list:
-            num_acts = len(action[0])
+            num_acts = int(len(action[0])/self.degree)
         else:
             num_acts = 1 
         for i,a in enumerate(action):
-            acts = t_observation[i,a]
-            if num_acts > 1:
-                for j in range(len(a)):
-                    feat_actions.append(acts[j])
+            act = t_observation[i,a]
+            if type(action[0]) == list:
+                if num_acts > 1:
+                    if self.degree == 1:
+                        for j in range(len(a)):
+                            feat_actions.append(act[j])
+                    else:
+                        print("ERROR: Haven't implemented Degree > 1 with RCR yet")
+                        exit()
+                else:
+                    feat_actions.append(act.flatten())
             else:
-                feat_actions.append(t_observation[i,a])
+                feat_actions.append(act)
         t_feat_action = torch.stack(feat_actions)
         observation = np.mean(batch.observation,axis=1)
         t_observation = torch.tensor(observation).float()
         t_action = torch.from_numpy(np.asarray(batch.action)).float()
+        if self.degree == 1:
+            t_action = torch.from_numpy(np.asarray(batch.action)).float()
+        else:
+            comb_action = [self.all_actions.index(a) for a in action]
+            t_action = torch.from_numpy(np.asarray(comb_action)).float()
         # Calcul actor loss
         self.actor_optimizer.zero_grad()
         if num_acts == 1: 
@@ -142,7 +157,6 @@ class FeaturizedACAgent(PGAgent):
             log_prob = pd.log_prob(t_action)
         else:
             pd = self.policy.forward(t_observation)
-
             log_prob = []
             for i in range(t_action.shape[0]):
                 pd = self.policy.forward(t_observation[i])
@@ -154,8 +168,7 @@ class FeaturizedACAgent(PGAgent):
         gae = (gae-gae.mean())/(gae.std()+1e-8)
         actor_loss = -(log_prob * gae).mean()
         actor_loss.backward()
-        self.actor_optimizer.step()
-    
+        self.actor_optimizer.step()    
 
 class PHCAgent(PGAgent):
     """

@@ -12,6 +12,8 @@ import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
 
+import time
+
 class QAgent(TrainableAgent):
     """
     The class of trainable agent using Qvalue-based methods
@@ -42,7 +44,7 @@ class QAgent(TrainableAgent):
         :param t: (int) The current timestep
         """
         if len(self.experience) < self.batch_size:
-            return
+            return np.NAN
         # Get changing policy
         curr_policy = self.target_policy if self.off_policy else self.policy
         # Get batch of experience
@@ -52,20 +54,19 @@ class QAgent(TrainableAgent):
         # else:
         batch = self.experience.sample(self.batch_size)
         # Compute target r_t + gamma*max_a Q(s_t+1, a)
-        target_value = self.target(curr_policy.Q, batch)
-        
+ 
+        target_value = self.target(curr_policy.Q, batch)#*(-1*self.index) #flip sign if index = 1, don't if index = 0
         # Compute current value Q(s_t, a_t)
-        #print(batch.observation)
-        #print(batch.action)
         curr_value = self.value(batch.observation, batch.action)
 
         # Update Q values
         self.update_q(curr_value, target_value, batch)
-        
         if self.off_policy and t % self.target_update_freq==0:
             self.update_target_model()
-            
-    
+        
+        critic_mse = torch.norm(target_value - curr_value)
+        return critic_mse
+
     def target(self, Q, batch):
         """
         Compute the target value.
@@ -164,7 +165,7 @@ class MinimaxQAgent(QAgent, MATrainable):
     def update_q(self, curr_value, target_value, batch):
         if len(batch.action[0]) > 2:
             raise Exception("The number of agents should not exceed 2.")
-        self.policy.Q.q_table[:, batch.action[0][self.index], batch.action[0][1-self.index]]  = curr_value + self.lr * (target_value - curr_value)
+        self.policy.Q.q_table[batch.observation[0][self.index], batch.action[0][self.index], batch.action[0][1-self.index]]  = curr_value + self.lr * (target_value - curr_value)
 
     def update_target_model(self):
         self.target_policy = copy.deepcopy(self.policy)
@@ -175,7 +176,7 @@ class MinimaxQAgent(QAgent, MATrainable):
         return target_value.unsqueeze(1).detach()
         
     def value(self, observation, action):
-        return self.policy.Q.q_table[:, action[0][self.index], action[0][1-self.index]]
+        return self.policy.Q.q_table[observation[0][self.index], action[0][self.index], action[0][1-self.index]]
     
 class DQNAgent(QAgent):
     """
@@ -193,25 +194,39 @@ class DQNAgent(QAgent):
     :param name: (str) The name of the agent      
     """
     
-    def __init__(self, qmodel, observation_space, action_space, experience="ReplayMemory-10000", exploration="EpsGreedy", gamma=0.99, lr=0.1,batch_size=32, tau=1., target_update_freq=1000,name="DQNAgent"):
+    def __init__(self, qmodel, observation_space, action_space, experience="ReplayMemory-10000", exploration="EpsGreedy", gamma=0.99, lr=0.1,sched_step=100e3,sched_gamma=0.1,batch_size=32, tau=1., target_update_freq=1000,name="DQNAgent"):
         super(DQNAgent, self).__init__(qmodel=qmodel, observation_space=observation_space, action_space=action_space, experience=experience, exploration=exploration, gamma=gamma, lr=lr, batch_size=batch_size, target_update_freq=target_update_freq, name=name)
         self.criterion = nn.SmoothL1Loss() # Huber criterion
         self.optimizer = optim.Adam(self.policy.Q.parameters(), lr=self.lr)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer,step_size=500e6,gamma=0.1)
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer,step_size=sched_step,gamma=sched_gamma)
         self.tau = tau
         if self.off_policy:
             self.target_policy.Q.eval()
             
-    def update_q(self, curr_value, target_value, batch):
+    def update_q(self, curr_value, target_value, batch,sched_step=True):
         self.optimizer.zero_grad()
         loss = self.criterion(curr_value, target_value)
+        #try:
         loss.backward()
+
+        # except:
+        #     print(loss.dtype)
+        #     print(curr_value.dtype)
+        #     print(target_value.dtype)
+        #     print(len(self.fact_experience))
+        #     print(len(self.cfact_experience))
+        #     exit()
+        #tic = time.perf_counter()
         self.optimizer.step()
-        self.scheduler.step()
-        if self.lr != self.scheduler.get_last_lr()[0]:
-            print('learning rate:',self.scheduler.get_last_lr()[0])
-        self.lr = self.scheduler.get_last_lr()[0]
-    
+        #torch.cuda.synchronize()
+        #toc = time.perf_counter()
+        #print(f'Backprop: {toc-tic}') 
+        if sched_step:
+            self.scheduler.step()
+            if self.lr != self.scheduler.get_last_lr()[0]:
+                print('learning rate:',self.scheduler.get_last_lr()[0])
+                self.lr = self.scheduler.get_last_lr()[0]
+ 
     def write_logs(self, t):
         if t%50 == 0:
             b = self.experience.sample(self.batch_size)
@@ -263,8 +278,8 @@ class DQNCriticAgent(DQNAgent):
     :param name: (str) The name of the agent      
     """
     
-    def __init__(self, qmodel,observation_space, action_space,experience="ReplayMemory-10000", exploration="EpsGreedy",gamma=0.99, lr=0.1,  batch_size=32, tau=1., target_update_freq=1000, name="DQNCriticAgent",train=True,model=None,act_degree=1):
-        super(DQNCriticAgent, self).__init__(qmodel=qmodel, action_space=action_space,observation_space=observation_space,experience=experience, exploration=exploration, gamma=gamma, lr=lr, batch_size=batch_size, target_update_freq=target_update_freq, name=name)
+    def __init__(self, qmodel,observation_space, action_space,experience="ReplayMemory-10000", exploration="EpsGreedy",gamma=0.99, lr=0.1, sched_step=100e3,sched_gamma=0.1, batch_size=32, tau=1., target_update_freq=1000, name="DQNCriticAgent",train=True,model=None,act_degree=1):
+        super(DQNCriticAgent, self).__init__(qmodel=qmodel, action_space=action_space,observation_space=observation_space,experience=experience, exploration=exploration, gamma=gamma, lr=lr, sched_step=sched_step,sched_gamma=sched_gamma,batch_size=batch_size, target_update_freq=target_update_freq, name=name)
         self.degree = act_degree
         self.all_actions = get_combinatorial_actions(gymSpace2dim(self.observation_space)[0],self.degree)
         self.policy = QCriticPolicy(qmodel,action_space=action_space,observation_space=observation_space,all_actions=self.all_actions)
@@ -296,7 +311,7 @@ class DQNCriticAgent(DQNAgent):
             feat_actions = torch.stack(feat_actions)
         else:
             feat_actions = torch.cat(feat_actions)
-        t_observation = torch.sum(t_observation,dim=1)
+        t_observation = torch.mean(t_observation,dim=1)
         t_observation = t_observation.repeat([num_samples,1])
         if num_samples > 1:
             q = self.policy.Q(t_observation,feat_actions)
@@ -309,6 +324,7 @@ class DQNCriticAgent(DQNAgent):
             return value.unsqueeze(1)
         else:
             return self.policy.Q(t_observation,feat_actions)
+
 class MinimaxDQNCriticAgent(DQNAgent,MATrainable):
     """
     The class of trainable agent using a neural network to model the  function Q
@@ -325,8 +341,8 @@ class MinimaxDQNCriticAgent(DQNAgent,MATrainable):
     :param name: (str) The name of the agent      
     """
     
-    def __init__(self, qmodel,observation_space, my_action_space, other_action_space,act_degree=1, index=None, mas=None,experience="ReplayMemory-10000", exploration="EpsGreedy", gamma=0.99, lr=0.1,  batch_size=32, tau=1., target_update_freq=1000, name="MultiDQNCriticAgent",train=True,model=None):
-        super(MinimaxDQNCriticAgent, self).__init__(qmodel=qmodel, action_space=my_action_space,observation_space=observation_space,experience=experience, exploration=exploration, gamma=gamma, lr=lr, batch_size=batch_size, target_update_freq=target_update_freq, name=name)
+    def __init__(self, qmodel,observation_space, my_action_space, other_action_space,act_degree=1, index=None, mas=None,experience="ReplayMemory-10000", exploration="EpsGreedy", gamma=0.99, lr=0.1, sched_step=100e3,sched_gamma=0.1, batch_size=32, tau=1., target_update_freq=1000, name="MultiDQNCriticAgent",train=True,model=None):
+        super(MinimaxDQNCriticAgent, self).__init__(qmodel=qmodel, action_space=my_action_space,observation_space=observation_space,experience=experience, exploration=exploration, gamma=gamma, lr=lr, sched_step=sched_step,sched_gamma=sched_gamma,batch_size=batch_size, target_update_freq=target_update_freq, name=name)
         self.degree = act_degree
         self.all_actions = get_combinatorial_actions(gymSpace2dim(self.observation_space)[0],self.degree)
         self.policy = MinimaxQCriticPolicy(qmodel,action_space=my_action_space,observation_space=observation_space,player=index,all_actions = self.all_actions,act_degree=self.degree)
@@ -335,9 +351,6 @@ class MinimaxDQNCriticAgent(DQNAgent,MATrainable):
             self.policy.load(model)
         self.train = train
     def target(self, Q, joint_batch):
-        # print(joint_batch.action)
-        #print(joint_batch.reward)
-        # exit() 
         my_rew = torch.tensor([joint_batch.reward[i][self.index] for i in range(len(joint_batch.reward))])
         target_value = my_rew
         return target_value.unsqueeze(1).detach()
@@ -350,10 +363,12 @@ class MinimaxDQNCriticAgent(DQNAgent,MATrainable):
         else:
             num_samples = 1
             p1_actions = [self.all_actions[a] for a in p1_actions]
+        #print('len p1 actions: ',len(p1_actions))
         p1_feat_actions = []
         for i,a in enumerate(p1_actions):
             acts = t_observation[i,a]
             if self.degree > 1:
+                #end_idx = len(acts)-self.degree if len(acts) >= self.degree else len(acts)
                 for j in range(0,len(acts),self.degree):
                     p1_feat_actions.append(torch.cat([acts[k] for k in range(j,j+self.degree)]))
             else:
@@ -362,6 +377,7 @@ class MinimaxDQNCriticAgent(DQNAgent,MATrainable):
             t_action_p1 = torch.stack(p1_feat_actions)
         else:
             t_action_p1 = torch.cat(p1_feat_actions)
+        #print('t_action_p1 shape: ', t_action_p1.shape)
         p2_actions = [a[1] for a in actions]
         if type(p2_actions[0]) == list:
             num_samples = int(len(p2_actions[0])/self.degree)
@@ -380,9 +396,12 @@ class MinimaxDQNCriticAgent(DQNAgent,MATrainable):
             t_action_p2 = torch.stack(p2_feat_actions)
         else:
             t_action_p2 = torch.cat(p2_feat_actions)
-        t_observation = torch.sum(t_observation,dim=1)
+        t_observation = torch.mean(t_observation,dim=1)
         t_observation = t_observation.repeat([num_samples,1])
+        idxs = []
+        #print('t_obs in value:', t_observation)
         if num_samples > 1:
+            #print('t_a_1 before policy: ',t_action_p1.shape)
             q = self.policy.Q(t_observation,t_action_p1,t_action_p2)
             value = torch.zeros(self.batch_size)
             for i in range(self.batch_size):

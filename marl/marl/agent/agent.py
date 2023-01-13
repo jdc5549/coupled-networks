@@ -1,6 +1,6 @@
 import marl
 
-from marl.tools import ClassSpec, _std_repr, is_done, reset_logging,ncr,get_implied_policy
+from marl.tools import ClassSpec, _std_repr, is_done, reset_logging,ncr,get_implied_policy,get_combinatorial_actions
 from marl.policy.policy import Policy
 from marl.exploration import ExplorationProcess
 from marl.experience import ReplayMemory, PrioritizedReplayMemory
@@ -61,13 +61,13 @@ class Agent(object):
     def reset(self):
         pass
     
-    def worst_rew(self):
-        return -np.inf
+    def worst_err(self):
+        return np.inf
     
-    def get_best_rew(self, rew1, rew2):
-        return rew2 if rew1 < rew2 else rew1
+    # def get_best_rew(self, rew1, rew2):
+    #     return rew2 if rew1 < rew2 else rew1
         
-    def test(self, envs, nb_episodes=4, max_num_step=200, render=True, multi_proc=False,time_laps=0.,nashEQ_policies=None,exploiters=False):
+    def test(self, envs, nb_episodes=4, max_num_step=1, render=True, multi_proc=False,time_laps=0.,nashEQ_policies=None,utils=None,exploiters=False):
         """
         Test a model.
         
@@ -83,11 +83,14 @@ class Agent(object):
         curr_policies = []
         exploitabilities = []
         exploiter_rewards = []
+        errs = []
+        s_errs = []
+        #all_actions = get_combinatorial_actions(envs[0].net_size,envs[0].num_nodes_attacked) #delete this after debugging
         for i,env in enumerate(envs):
             policy_i = []
+            all_actions = get_combinatorial_actions(env.net_size,env.num_nodes_attacked)
             for episode in range(nb_episodes):
-                observation = env.reset()
-                self.reset()
+                observation = env.reset(fid=i)
                 done = False
                 if render:
                     env.render()
@@ -97,29 +100,76 @@ class Agent(object):
                         obs_reshaped = np.reshape(observation,(observation.shape[1],observation.shape[0],observation.shape[2],observation.shape[3]))
                         action = self.greedy_action(obs_reshaped,num_actions=env.get_attr('num_nodes_attacked')[0])
                     else:
-                        action = self.greedy_action(observation,num_actions=env.num_nodes_attacked)
-                        if not exploiters:
-                            policy = self.get_agent_policies(observation[0])[:2]
-                            #obs_t = torch.tensor(np.sum(observation[0],axis=0)).float()
-                            num_samples = int(env.num_nodes_attacked/env.degree)
-                            if nashEQ_policies is not None and num_samples > 1:
-                                impl_policy = np.zeros([len(policy),ncr(len(policy[0]),num_samples)])
-                                for i in range(len(policy)):
-                                    impl_policy[i,:] = get_implied_policy(policy[i],env.num_nodes_attacked)
-                            else:
-                                impl_policy = np.asarray(policy)
-                            if self.last_policies is not None:
-                                kl = entropy(np.mean(self.last_policies,axis=0)[i].flatten(),impl_policy.flatten())
-                                last_policy_divergences.append(kl)
-                            policy_i.append(impl_policy)
-                            if nashEQ_policies is not None:
-                                nashEQ_policy = nashEQ_policies[i]
-                                kl = entropy(nashEQ_policy.flatten(),impl_policy.flatten())
-                                nash_eq_divergences.append(kl)
+                        num_samples = int(env.num_nodes_attacked/env.degree)
+                        action = self.greedy_action(observation,num_actions=num_samples)
+                        #if not exploiters:
+                        policy,Q_val = self.get_agent_policies(observation[0])
+                        #if nashEQ_policies is not None:
+                        if exploiters:
+                            if self.exploited == 'NN':
+                                ego_policy = self.get_ego_policies(observation[0])
+                            elif self.exploited == 'Random':
+                                ego_policy = [np.ones(len(policy[0]))/len(policy[0]),np.ones(len(policy[0]))/len(policy[0])]
+                            elif self.exploited == 'Heuristic':
+                                ego_policy = [np.zeros(ncr(len(policy[0]),num_samples)),np.zeros(ncr(len(policy[0]),num_samples))]
+                                action[0][0].sort()
+                                action[0][1].sort()
+                                ego_policy[0][all_actions.index(action[0][0])] = 1
+                                ego_policy[1][all_actions.index(action[0][1])] = 1
                         else:
-                            policy = self.get_agent_policies(observation[0])
-                            policy_i.append(policy)
+                            ego_policy = policy
+                        if num_samples > 1 and self.exploited != 'Heuristic':
+                            impl_policy = np.zeros([len(ego_policy),ncr(len(ego_policy[0]),num_samples)])
+                            for i in range(len(ego_policy)):
+                                impl_policy[i,:] = get_implied_policy(ego_policy[i],env.num_nodes_attacked)
+                            impl_Q = np.zeros([len(all_actions),len(all_actions)])
+                            for i,a in enumerate(all_actions):
+                                for j,d in enumerate(all_actions):
+                                    impl_Q[i,j] = 0
+                                    for a_ in a:
+                                        for d_ in d:
+                                            impl_Q[i][j] += Q_val[0][a_][d_]/(2*len(a))
+                            impl_Q = [impl_Q, -impl_Q]
+                        else:
+                            impl_policy = np.asarray(ego_policy)
+                            impl_Q = Q_val
+                        if self.last_policies is not None and not exploiters:
+                            kl = entropy(np.mean(self.last_policies,axis=1)[i].flatten(),np.array(ego_policy).flatten())
+                            last_policy_divergences.append(kl)
+                        else:
                             last_policy_divergences.append(0)
+                        policy_i.append(ego_policy)
+                        #print(ego_policy)
+                        #print(nashEQ_policies[i])
+                        if nashEQ_policies is not None:
+                            nashEQ_policy = nashEQ_policies[i]
+                            kl = entropy(nashEQ_policy.flatten(),impl_policy.flatten())
+                            # print('policy: ',impl_policy)
+                            # print('nash policy: ',nashEQ_policy)
+                            # print('Q: ',Q_val[0])
+                            # print('util: ',utils[i])
+                            nash_eq_divergences.append(kl)
+                            if len(utils) > 0:
+                                err_mat = [impl_Q[0]-utils[i],impl_Q[1]+utils[i]]
+                                #print(err_mat[0])
+                                #print(err_mat[1])
+                                err = []
+                                #err0 = []
+                                #err1 = []
+                                for i, erri in enumerate(err_mat):
+                                    for j, errj in enumerate(erri):
+                                        for k,errk in enumerate(errj):
+                                            abs_errj = np.abs(errk)
+                                            # if i != j:
+                                            #     err1.append(abs_errj)
+                                            # else:
+                                            #     err0.append(abs_errj)
+                                            err.append(abs_errj)
+                                #print(f'0 error: {np.mean(err0)}')
+                                #print(f'1 error: {np.mean(err1)}')
+                                errs.append(np.mean(err))
+
+
                     if render:
                         print("Step {} - Action {}".format(step, action))
                     if(multi_proc):
@@ -129,7 +179,7 @@ class Agent(object):
                         for i in range(orig.shape[1]):
                             for j in range(orig.shape[0]):
                                 action[i][j] = orig[j][i]
-                        observation, reward, done, _ = env.step(action)
+                        obs2, reward, done, _ = env.step(action)
                         sum_r = reward[:,0]
                     else:
                         if exploiters:
@@ -147,8 +197,19 @@ class Agent(object):
                             exploiter_rewards.append([rew[1][0],rew[2][1]])
                             exploitabilities.append(exploitability)
                         else:
-                            observation, reward, done, _ = env.step(action)
+                            obs2, reward, done, _ = env.step(action)
                             sum_r = np.array([reward[0]]) if step==0 else np.add(sum_r, reward[0])
+                            #print(Q_val[0])
+                            # print('Q_val: ',Q_val[0][all_actions.index(action[0])][all_actions.index(action[1])])
+                            # print('Value function: ',self.agents[0].value([observation],[action]))
+                            # exit()
+                            if type(action[0]) == int:
+                                a0 = action[0]
+                                a1 = action[1]
+                            else:
+                                a0 = list(set(action[0]))
+                                a1 = list(set(action[1]))
+                            s_errs.append(np.abs(reward[0] - impl_Q[0][all_actions.index(a0)][all_actions.index(a1)]))
                     if render:
                         env.render()
                         time.sleep(time_laps)
@@ -158,12 +219,16 @@ class Agent(object):
             #mean_policy = np.mean(policy_i,axis=0)
             curr_policies.append(policy_i)
         nash_eq_divergences = np.asarray(nash_eq_divergences)
+        #print('nash_eq_divergences:',nash_eq_divergences)
+        # print('util errs: ',errs)
+        # print('s_errs',s_errs)
+
         last_policy_divergences = np.asarray(last_policy_divergences)
         curr_policies = np.asarray(curr_policies)
         exploitabilities = np.asarray(exploitabilities)
         exploiter_rewards = np.asarray(exploiter_rewards)
-        # print('Nash Policies:',nashEQ_policies)
-        # print('Current Policies:',curr_policies)
+        #print('Nash Policies:',nashEQ_policies)
+        #print('Current Policies:',curr_policies)
         # print(sum_r)
         # print(np.mean(exploiter_rewards,axis=0))
         #print('Defender Exploiter',np.mean(curr_policies,axis=1)[0][0])
@@ -172,13 +237,15 @@ class Agent(object):
         if render:
             env.close()
         return_dict = {'last_kl_div' :[last_policy_divergences, last_policy_divergences.mean(axis=0), last_policy_divergences.std(axis=0)],
+            'util_mse': [errs, np.mean(errs),np.std(errs)],
+            'sample_mse': [s_errs, np.mean(s_errs),np.std(s_errs)],
             'agent_rewards' : [sum_rewards, sum_rewards.mean(axis=0), sum_rewards.std(axis=0)],
             'policies': curr_policies}
         if exploiters:
             return_dict['exploitability'] = [exploitabilities, exploitabilities.mean(axis=0), exploitabilities.std(axis=0)]
             return_dict['exploiter_rewards'] = [exploiter_rewards,np.mean(exploiter_rewards[:,0]),np.mean(exploiter_rewards[:,1])]
         if nashEQ_policies is not None:
-            return_dict['nash_kl_div'] = [nash_eq_divergences, nash_eq_divergences.mean(axis=0), nash_eq_divergences.std(axis=0)] #[mean_rewards, mean_rewards.mean(axis=0), mean_rewards.std(axis=0)] ,
+            return_dict['nash_kl_div'] = [nash_eq_divergences, np.sort(nash_eq_divergences)[:3].mean(axis=0), np.sort(nash_eq_divergences[:3]).std(axis=0)] #[mean_rewards, mean_rewards.mean(axis=0), mean_rewards.std(axis=0)] ,
         return return_dict
     
     def __repr__(self):
@@ -274,7 +341,7 @@ class TrainableAgent(Agent):
         Update the model.
         """
         raise NotImplementedError
-    
+
     def reset_exploration(self, nb_timesteps):
         """
         Reset the exploration process. 
@@ -311,13 +378,13 @@ class TrainableAgent(Agent):
         filename_tmp = os.path.join(folder, filename_tmp)
         self.policy.save(filename_tmp)
     
-    def save_policy_if_best(self, best_rew, rew, folder=".", filename=''):
-        if best_rew < rew:
-            logging.info("#> {} - New Best Score ({}) - Save Model\n".format(self.name, rew))
+    def save_policy_if_best(self, best_err, err, folder=".", filename=''):
+        if best_err < err:
+            logging.info("#> {} - New Best Test Error ({}) - Save Model\n".format(self.name, rew))
             filename_tmp = "{}-{}".format("best", filename) if filename is not '' else "{}".format("best")
             self.save_policy(folder=folder, filename=filename_tmp)
-            return rew
-        return best_rew
+            return err
+        return best_err
         
     def save_all(self):
         pass
@@ -349,14 +416,14 @@ class TrainableAgent(Agent):
             test_envs = [env]
         timestep = timestep_init
         episode = 0
-        best_rew = self.worst_rew()
+        best_err = self.worst_err()
         test = False
         rewards = []
+        cmses = []
         self.reset_exploration(nb_timesteps)
         while timestep < nb_timesteps:
             #tic = time.perf_counter()
-            #print("--------------------------------------------------------Timestep: {}---------------------------------------------------------------------------".format(timestep))
-            self.update_exploration(timestep)
+            eps = self.update_exploration(timestep)
             episode +=1
             if exploiters:
                 fid = random.choice([i for i in range(len(env.filename))])
@@ -397,12 +464,37 @@ class TrainableAgent(Agent):
                             obs.append(obs_)
                         rewards.append([rew[0][0],rew[1][0],rew[2][1]])
                     else:
-                        obs2, rew, done, _ = env.step(action)
+                        obs2, rew, done, info = env.step(action)
+                        #a1 = all_actions.index(sorted(action[0]))
+                        #a2 = all_actions.index(sorted(action[1]))
+                        # diff = np.abs(self.utils[env.fid][a1][a2]-rew[0])
+                        # if diff > 0:
+                        #     print(f'Environment: {env.fid}')
+                        #     print(f'Action: {action}')
+                        #     print(f'Reward: {rew[0]}')
+                        #     print(f'Utility: {self.utils[env.fid][a1][a2]}')
                         rewards.append(rew[0])
-                    self.store_experience(obs, action, rew, obs2, done)
+                    #oc_bstore = time.perf_counter()
+                    #print(f'Time to store experience from start of learn: {toc_bstore-tic}')
+                    self.store_experience(obs, action, rew, obs2, done,info)
+                    #toc_astore = time.perf_counter()
+                    #print(f'Store experience time: {toc_astore-toc_bstore}')
+                #obs = obs2
 
-                obs = obs2
-                self.update_model(timestep)
+                #toc_bupdate = time.perf_counter()
+                #print(f'Time to store experience from start of learn: {toc_bupdate-tic}')
+                critic_mse = self.update_model(timestep)
+                #toc_aupdate = time.perf_counter()
+                # if timestep > self.agents[0].batch_size:
+                #     print(f'Update model time: {toc_aupdate-toc_bupdate}')               
+                if critic_mse is not None:
+                    for mse in critic_mse:
+                        if type(mse) == list:
+                            for e in mse:
+                                cmses.append(e)
+                        else:
+                            if not math.isnan(mse):
+                                cmses.append(mse.detach().cpu().numpy())
                 if(multi_proc):
                     timestep += obs.shape[0]
                 else:
@@ -410,7 +502,9 @@ class TrainableAgent(Agent):
                 if render:
                     env.render()
                     time.sleep(time_laps)
-            
+                
+                self.writer.add_scalar("Hyperparameters/Epsilon",eps,timestep)
+                self.writer.add_scalar("Hyperparameters/Learning_Rate",self.agents[0].lr,timestep)
                 # Save the model
                 if timestep % save_freq == 0:
                     if exploiters:
@@ -420,11 +514,18 @@ class TrainableAgent(Agent):
                         logging.info("#> Step {}/{} --- Mean Reward Ego: {} --- Mean Reward Def Expltr {} --- Mean Reward Atk Expltr {} \n".format(timestep, nb_timesteps,mean_rew_ego,mean_rew_def_expltr,mean_rew_atk_expltr))
                     else:
                         mean_rew = sum(rewards)/len(rewards)
-                        logging.info("#> Step {}/{} --- Mean Reward: {}\n".format(timestep, nb_timesteps,mean_rew))
+                        if len(cmses) > 0:
+                            mean_cmse = sum(cmses)/len(cmses) if len(cmses) > 0 else np.NAN
+                            #self.writer.add_scalar("Critic/critic_error",mean_cmse,timestep)
+                            cmses = []
+                            logging.info("#> Step {}/{} --- Mean Reward: {} --- Critic Training Error: {} --- Epsilon: {}\n".format(timestep, nb_timesteps,mean_rew,mean_cmse,eps))
+                            self.writer.add_scalar("Critic/Critic_Train_err", mean_cmse, timestep)
+                        else:
+                            logging.info("#> Step {}/{} --- Mean Reward: {}\n".format(timestep, nb_timesteps,mean_rew))
+
                     self.save_policy(timestep=timestep, folder=save_folder)
                     #self.writer.add_scalar("Reward/mean_reward",mean_rew,timestep)
                     rewards = []
-
                 
                 # Test the model
                 if timestep % test_freq == 0:
@@ -433,12 +534,13 @@ class TrainableAgent(Agent):
                     break
             #toc = time.perf_counter()
             #print(f"Episode {episode} completed in {toc - tic:0.4f} seconds")
-
             if test:
                 print("--------------------------------------------------------Testing---------------------------------------------------------------------------")
-                res_test = self.test(test_envs, nb_episodes=100, max_num_step=max_num_step, render=False,multi_proc=multi_proc,nashEQ_policies=self.nash_policies,exploiters=exploiters)
+                res_test = self.test(test_envs, nb_episodes=1, max_num_step=max_num_step, render=False,multi_proc=multi_proc,nashEQ_policies=self.nash_policies,utils=self.utils,exploiters=exploiters)
                 _, last_kl_m, last_kl_std = res_test['last_kl_div']
+                _, s_m_mses, s_std_mses = res_test['util_mse']
                 _, s_m_rews, s_std_rews = res_test['agent_rewards']
+
                 if exploiters:
                     _,explt1_m,explt2_m = res_test['exploiter_rewards']
                     self.writer.add_scalar("Reward/exploiter1_reward",sum(explt1_m)/len(explt1_m) if isinstance(explt1_m, list) else explt1_m, timestep-test_freq)
@@ -447,6 +549,7 @@ class TrainableAgent(Agent):
                     self.writer.add_scalar("Reward/exploitability",sum(explt_m)/len(explt_m) if isinstance(explt_m, list) else explt_m, timestep-test_freq)
                 else:
                     self.writer.add_scalar("Reward/Attacker_mean_rew", sum(s_m_rews)/len(s_m_rews) if isinstance(s_m_rews, list) else s_m_rews, timestep)
+                    self.writer.add_scalar("Critic/Critic_Test_err", sum(s_m_mses)/len(s_m_mses) if isinstance(s_m_mses, list) else s_m_mses, timestep)
                     if not math.isnan(last_kl_m):
                         self.writer.add_scalar("Policy/last_kl_div", sum(last_kl_m)/len(last_kl_m) if isinstance(last_kl_m, list) else last_kl_m, timestep)
                 if self.nash_policies is not None:
@@ -455,17 +558,20 @@ class TrainableAgent(Agent):
                 duration = datetime.now() - start_time
                 if verbose == 2:
                     log = "#> Step {}/{} (ep {}) - {}\n\
+                        |\tCritic Test Error {} / Dev {}\n\
                         |\tAttacker Mean Reward {} / Dev {}\n\
                         |\tLast Kl Divergence {} / Dev {}) \n".format(timestep, 
                                                             nb_timesteps, 
                                                             episode, 
                                                             duration,
+                                                            np.format_float_scientific(s_m_mses, precision=4), 
+                                                            np.around(s_std_mses, decimals=4), 
                                                             np.around(s_m_rews, decimals=4), 
                                                             np.around(s_std_rews, decimals=4), 
                                                             np.around(last_kl_m, decimals=4), 
                                                             np.around(last_kl_std, decimals=4))
                     if self.nash_policies is not None:
-                        log += "|\t Nash Kl Divergence {} / Dev {}) \n".format(np.around(nash_kl_m,decimals=4),np.around(nash_kl_std,decimals=4))
+                        log += "|\t Nash Kl Divergence {} / Dev {}) \n".format(np.format_float_scientific(nash_kl_m,precision=4),np.around(nash_kl_std,decimals=4))
                     if exploiters:
                         log += "|\t Exploitability {} / Dev {}) \n".format(np.around(explt_m,decimals=4),np.around(explt_std,decimals=4))
                         log += self.training_log(verbose)
@@ -491,7 +597,7 @@ class TrainableAgent(Agent):
                                                                 np.around(last_kl_m, decimals=4), 
                                                                 np.around(s_m_rews, decimals=4))
                 logging.info(log)
-                best_rew = self.save_policy_if_best(best_rew, [s_m_rews,-s_m_rews], folder=save_folder)
+                best_err = self.save_policy_if_best(best_err, s_m_mses, folder=save_folder)
                 test = False
                 
         logging.info("#> End of learning process !")

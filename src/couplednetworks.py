@@ -68,7 +68,7 @@ mpid = -1
 cfs_iter = -1
 percent_removed = -1
 r_num = -1
-config_name = 'config/config_cn_runner_test_intermediate_random.json'
+config_name = 'config/config.json'
 
 """
 Read from the configuration file.

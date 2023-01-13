@@ -131,11 +131,7 @@ class MinimaxQTablePolicy(ModelBasedPolicy):
         num_p2_acts = gymSpace2dim(self.action_space)
         c = np.zeros(num_player_actions+1)
         c[num_player_actions] = -1
-        print(observation)
-        print(self.model.shape)
-        print(self.model(state=observation).shape)
-        exit()
-        #U = self.model(state=observation).squeeze().cpu().detach().numpy()
+        U = self.Q(state=observation).squeeze().cpu().detach().numpy()
         # print(self.player)
         # if self.player == 0:
         U = U.T #LP package requires the player to be the column player
@@ -151,7 +147,7 @@ class MinimaxQTablePolicy(ModelBasedPolicy):
             print("Failed to Optimize LP with exit status ",res["status"])
         value = res["fun"]
         policy = res["x"][0:num_player_actions]
-        return policy
+        return policy, U
         
     def __call__(self,observation,num_actions=1,policy=None):
         """
@@ -213,7 +209,7 @@ class QCriticPolicy(ModelBasedPolicy):
         for i in range(num_player_actions):
             value[i] = self.Q(state,featurized_actions[i])
         policy = F.gumbel_softmax(torch.tensor(value)).numpy()
-        return policy
+        return policy, value
         
     def __call__(self, state,num_actions=1,policy=None):
         if self.degree > 1:
@@ -269,18 +265,29 @@ class MinimaxQCriticPolicy(ModelBasedPolicy):
         self.all_actions = all_actions
 
     def get_policy(self,state,featurized_actions):
-        num_player_actions = gymSpace2dim(self.action_space) #TODO: figure out how to pass both players action spaces so we can do assymetric games
+        #print('t_obs in get_policy:', state)
+        num_player_actions = gymSpace2dim(self.action_space)
         num_p1_acts = gymSpace2dim(self.action_space)
         num_p2_acts = gymSpace2dim(self.action_space)
         c = np.zeros(num_player_actions+1)
         c[num_player_actions] = -1
         U = np.zeros([num_p1_acts,num_p2_acts])
+        # U = (-2*self.player +1) * np.array([[0.1 for i in range(10)],[0.1 for i in range(10)],
+        #     [0.2 for i in range(10)],[0.6 for i in range(10)],[0.1 for i in range(10)],
+        #     [0.2 for i in range(10)],[0.2 for i in range(10)],[0.2 for i in range(10)],
+        #     [0.1 for i in range(10)],[0.3 for i in range(10)]])
+        #np.fill_diagonal(U,0)
+        #U_noisy = U + np.random.randn(num_p1_acts,num_p2_acts)*1e-4
+        #print(U)
         for i in range(num_p1_acts):
             for j in range(num_p2_acts):
-                U[i,j] = self.Q(state,featurized_actions[i],featurized_actions[j])
+                U[i,j] = self.Q(state,featurized_actions[i],featurized_actions[j])*(-2*self.player + 1) #flip sign if player 1, don't if player 0
         if self.player == 0:
-            U = U.T #LP package requires the player to be the column player
-        A_ub = np.hstack((-U,np.ones((num_player_actions,1))))
+            U_calc = -U.T #LP package requires the player to be the column player
+        else:
+            U_calc = -U
+        #print('U_calc: ',U_calc)
+        A_ub = np.hstack((U_calc,np.ones((num_player_actions,1))))
         b_ub = np.zeros(num_player_actions)
         A_eq = np.ones((1,num_player_actions+1))
         A_eq[:,num_player_actions] = 0
@@ -292,7 +299,10 @@ class MinimaxQCriticPolicy(ModelBasedPolicy):
             print("Failed to Optimize LP with exit status ",res["status"])
         value = res["fun"]
         policy = res["x"][0:num_player_actions]
-        return policy
+        # print('policy: ', policy)
+        # if self.player == 1:
+        #     exit()
+        return policy,U
 
     def __call__(self, state,num_actions=1,policy=None):
         if self.degree > 1:
@@ -305,10 +315,11 @@ class MinimaxQCriticPolicy(ModelBasedPolicy):
             retries = 0
             retry_lim = 100
             if policy is None:
-                policy = self.get_policy(state,featurized_actions)
+                policy, value = self.get_policy(state,featurized_actions)
             try:
                 pd = Categorical(torch.tensor(policy))
             except:
+                print("Failed util: ",value)
                 print("Failed with policy:", policy)
                 pd = Categorical(1/len(policy)*torch.ones_like(torch.tensor(policy)))
             actions = []
@@ -347,7 +358,6 @@ class StochasticPolicy(ModelBasedPolicy):
     
     def __init__(self, model, observation_space=None, action_space=None,all_actions=[]):
         super(StochasticPolicy, self).__init__(model)
-        
         self.observation_space = observation_space
         self.action_space = action_space
         self.all_actions = all_actions
@@ -364,7 +374,7 @@ class StochasticPolicy(ModelBasedPolicy):
 
     def get_policy(self,observation,action):
         pd = self.forward(observation)
-        return pd.probs.detach().cpu().numpy()
+        return pd.probs.detach().cpu().numpy(), None
 
     def __call__(self, observation,num_actions=1):
         observation = torch.tensor(observation).float()

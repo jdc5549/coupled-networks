@@ -57,15 +57,17 @@ class MARL(TrainableAgent, MAS):
     :param agents_list: (list) The list of agents in the MARL model
     :param name: (str) The name of the system
     """
-    def __init__(self, agents_list=[],name='marl', log_dir="logs",nash_policies=None,act_degree=1):
+    def __init__(self, agents_list=[],name='marl', log_dir="logs",nash_policies=None,utils=None,act_degree=1):
         MAS.__init__(self, agents_list=agents_list, name=name)
         self.experience = marl.experience.make("ReplayMemory", capacity=10000)
         self.log_dir = log_dir
         self.nash_policies = nash_policies
+        self.utils = utils
         self.last_policies = None
         self.init_writer(log_dir)
         self.explt_opp_update_freq = 1000
         self.degree = [ag.degree for ag in agents_list]
+        self.exploited = 'None'
         
     def reset(self):
         for ag in self.agents:
@@ -79,20 +81,26 @@ class MARL(TrainableAgent, MAS):
         #         ag.init_writer(log_path)
         
     def store_experience(self, *args):
-        observation,action, reward, next_observation, done = args
+        observation,action, reward, next_observation, done,info = args
         for i,ag in enumerate(self.agents):
             if hasattr(self.agents[0],'mas'):
-                if isinstance(ag, TrainableAgent):
-                    ag.store_experience(observation, action, reward, next_observation, done)
+                if isinstance(ag, TrainableAgent) and i < 1:
+                    ag.store_experience(observation, action, reward, next_observation, done,info)
             else:
                 if isinstance(ag, TrainableAgent):
-                    ag.store_experience(observation[i], action[i], reward[i], next_observation[i], done[i])
+                    ag.store_experience(observation[i], action[i], reward[i], next_observation[i], done[i],info[i])
             
     def update_model(self, t):
         # TrainableAgent.update_model(self, t) 
-        for ag in self.agents:
-            if isinstance(ag, TrainableAgent) and ag.train:
-                ag.update_model(t)
+        critic_mse = []
+        for i,ag in enumerate(self.agents):
+            if hasattr(self.agents[0],'mas'):
+                if isinstance(ag, TrainableAgent) and ag.train and i < 1:
+                    critic_mse.append(ag.update_model(t))
+            else:
+                if isinstance(ag, TrainableAgent) and ag.train:
+                    critic_mse.append(ag.update_model(t))
+        return critic_mse
     
     def reset_exploration(self, nb_timesteps):
         # TrainableAgent.update_exploration(self, nb_timesteps)        
@@ -104,20 +112,28 @@ class MARL(TrainableAgent, MAS):
         # TrainableAgent.update_exploration(self, t)        
         for ag in self.agents:
             if isinstance(ag, TrainableAgent):
-                ag.exploration.update(t)
+                eps = ag.exploration.update(t)
+        return eps
 
     def get_agent_policies(self,observation):
         policies = []
+        vals = []
+        t_obs = torch.tensor(observation).float()
+        if self.agents[0].degree > 1:
+            feat_actions = torch.stack([t_obs[action].flatten() for action in self.agents[0].all_actions]).float()
+        else:
+            feat_actions = t_obs
+        obs = torch.mean(t_obs,axis=0)
         for ag in self.agents:
-            t_obs = torch.tensor(observation).float()
-            if ag.degree > 1:
-                feat_actions = torch.stack([t_obs[action].flatten() for action in ag.all_actions]).float()
-            else:
-                feat_actions = t_obs
-            obs = torch.sum(t_obs,axis=0)
-            policy = ag.policy.get_policy(obs,feat_actions)
+            policy,val = ag.policy.get_policy(obs,feat_actions)
+            #print(ag.name)
+            #print(val)
+            #print(ag.policy.Q(obs,feat_actions[0],feat_actions[1]))
+            # if ag.name == 'Defender':
+            #     exit()
             policies.append(policy)
-        return policies
+            vals.append(val)
+        return policies, vals
 
         
     def action(self, observation,num_actions=1):
@@ -147,27 +163,28 @@ class MARL(TrainableAgent, MAS):
             if isinstance(ag, TrainableAgent):
                 ag.save_policy(folder=folder, filename=filename_tmp, timestep=timestep)
         
-    def get_best_rew(rew1, rew2):
-        for ind, ag in enumerate(self.agents):
-            rew1[ind] = ag.get_best_rew(rew1[ind], rew2[ind])
-        return rew1
+    # def get_best_rew(rew1, rew2):
+    #     for ind, ag in enumerate(self.agents):
+    #         rew1[ind] = ag.get_best_rew(rew1[ind], rew2[ind])
+    #     return rew1
         
-    def save_policy_if_best(self, best_rew, rew, folder='.', filename=''):
+    def save_policy_if_best(self, best_err, err, folder='.', filename=''):
         if not os.path.exists(folder):
             os.makedirs(folder)
         filename_tmp = "{}-{}".format(filename, self.name) if filename is not '' else "{}".format(self.name)
-        for ind, ag in enumerate(self.agents):
-            if isinstance(ag, TrainableAgent):
-                best_rew[ind] = ag.save_policy_if_best(best_rew[ind], rew[ind], folder=folder, filename=filename_tmp)
-            else:
-                best_rew[ind] = ag.get_best_rew(best_rew[ind], rew[ind])
-        return best_rew
+        #for ind, ag in enumerate(self.agents):
+        if isinstance(self.agents[0], TrainableAgent):
+            best_err = self.agents[0].save_policy_if_best(best_err, err, folder=folder, filename=filename_tmp)
+        else:
+            if best_err < err:
+                best_err = err
+        return best_err
             
-    def worst_rew(self):
-        best_rew = []
-        for ag in self.agents:
-            best_rew += [ag.worst_rew()]
-        return best_rew
+    def worst_err(self):
+        # best_rew = []
+        # for ag in self.agents:
+        #     best_rew += [ag.worst_rew()]
+        return np.inf
                 
     def load_model(self, filename):
         for ag in self.agents:
@@ -203,12 +220,14 @@ class MARL_with_exploiters(MARL):
         self.obs = obs
         self.exploited = exploited
 
+
         if exploited == 'NN':
             self.ego_policies = []
             print('Loading Ego Agent Policies...')
             for ob in self.obs:
                 self.ego_policies.append(self.get_agent_policies(ob)[:2])
             print('Done.')
+
         #self.last_ego_models = [copy.deepcopy(ag.policy) for ag in self.ego_agents_list]        
         self.nash_policies = nash_policies
         self.last_policies = None
@@ -233,7 +252,7 @@ class MARL_with_exploiters(MARL):
             exit()
         if self.exploited == 'NN':
             policies = self.ego_policies[obs_index]
-            ego_acts = [ag.policy(observation,num_actions=num_actions,policy=policies[i]) for i,ag in enumerate(self.ego_agents_list)]
+            ego_acts = [ag.policy(obs,num_actions=num_actions,policy=policies[i]) for i,ag in enumerate(self.ego_agents_list)]
         else:
             ego_acts = [pi([obs],num_actions=num_actions) for pi in self.ego_agents_list]
             if len(ego_acts[0]) ==1:
@@ -255,7 +274,7 @@ class MARL_with_exploiters(MARL):
     def greedy_action(self, observation,num_actions=1):
         agent_actions = []
         obs = observation[0]
-        for ag in self.exploiter_agents_list:
+        for ag in self.exploiter_agents_list: 
             agent_actions.append(ag.greedy_action(obs,num_actions=num_actions))
         obs_index = -1
         for i,ob in enumerate(self.obs):
@@ -266,7 +285,7 @@ class MARL_with_exploiters(MARL):
             exit()
         if self.exploited == 'NN':
             policies = self.ego_policies[obs_index]
-            ego_acts = [ag.policy(observation,num_actions=num_actions,policy=policies[i]) for i,ag in enumerate(self.ego_agents_list)]
+            ego_acts = [ag.policy(obs,num_actions=num_actions,policy=policies[i]) for i,ag in enumerate(self.ego_agents_list)]
         else:
             ego_acts = [pi([obs],num_actions=num_actions) for pi in self.ego_agents_list]
             if len(ego_acts[0]) ==1:
@@ -282,12 +301,21 @@ class MARL_with_exploiters(MARL):
         self.exploiter_agents_list[1].store_experience(observation[2][1],action[2][1],reward[2][1],next_observation[2][1],done[2][1])
 
 
-    # def get_agent_policies(self,observation,feat_actions):
-    #     policies = []
-    #     for ag in self.ego_agents_list:
-    #         policy,value = ag.policy.get_policy_and_val(observation,feat_actions)
-    #         policies.append(policy)
-    #     return policies
+    def get_ego_policies(self,observation):
+        policies = []
+        vals = []
+        for ag in self.ego_agents_list:
+            t_obs = torch.tensor(observation).float()
+            if ag.degree > 1:
+                feat_actions = torch.stack([t_obs[action].flatten() for action in ag.all_actions]).float()
+            else:
+                feat_actions = t_obs
+            obs = torch.mean(t_obs,axis=0)
+            policy,val = ag.policy.get_policy(obs,feat_actions)
+            policies.append(policy)
+            vals.append(val)
+        return policies,vals
+
 
     def save_policy_if_best(self, best_rew, rew, folder='.', filename=''):
         if not os.path.exists(folder):

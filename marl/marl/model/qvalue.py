@@ -67,7 +67,7 @@ class MultiQTable(Model):
         self.n_obs = int(obs_sp)
         self.n_actions = act_sp
         self.value = torch.zeros(tuple([self.n_obs] + self.n_actions), dtype=torch.float64)
-    
+
     @property
     def q_table(self):
         return self.value
@@ -78,13 +78,13 @@ class MultiQTable(Model):
     
     def __call__(self, state=None, action=None):
         if action is None and state is None:
-            return self.value.min(2).values 
+            return self.value
         if action is None:
-            return self.value.min(2).values[state, :]
+            return self.value[state]
         if state is None:
-            return self.value.min(2).values[:, action]
+            return self.value[:,action]
         else:
-            return self.value.min(2).values[state, action]
+            return self.value[state, action]
 
         
 class ActionProb(Model):
