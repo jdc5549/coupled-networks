@@ -5,6 +5,7 @@ import networkx as nx
 import time
 import os
 
+
 def ncr(n, r):
     import operator as op
     from functools import reduce
@@ -97,14 +98,15 @@ if __name__ == '__main__':
     parser.add_argument("--nash_eqs_dir",default=None,type=str,help='Directory where Nash EQ benchmarks will be written. If None (default), then does not calculate Nash EQs.')
     parser.add_argument("--p",default=0.1,type=float,help='If calculating Nash EQs, the percent of nodes to be attacked/defended.')
     parser.add_argument("--env_type", default='SimpleCascadeEnv',help='What type of gym environment should be used to generate the NashEQ utility')
+    parser.add_argument("--cascade_type", default='all', help='What type of cascading to use to get utility.')
     args = parser.parse_args()
+    Cascade_Types = ['threshold','shortPath']
 
     if args.net_save_dir[-1] != '/':
         args.net_save_dir += '/'
-    full_dir = args.net_save_dir + f'SF_{args.num_nodes}n_2.422deg_{args.env_type}_p{args.p}_{args.num2gen}/'
+    full_dir = args.net_save_dir + f'SF_{args.num_nodes}n_2.422deg_{args.env_type}_p{args.p}_{args.cascade_type}Casc_{args.num2gen}nets/'
     if not os.path.isdir(full_dir):
         os.mkdir(full_dir)
-    print(args.env_type)
     if args.env_type == 'SimpleCascadeEnv':
         gen_threshes = True
     else:
@@ -117,18 +119,23 @@ if __name__ == '__main__':
             os.mkdir(args.nash_eqs_dir)
         tic = time.perf_counter()
         files = [f for f in os.listdir(full_dir) if 'thresh' not in f]
-        for i,f in enumerate(files):
-            if args.env_type == 'SimpleCascadeEnv':
-                env = SimpleCascadeEnv(args.num_nodes,args.p,args.p,'File',filename = os.path.join(full_dir,f))
-            elif args.env_type == 'CoupledNetsEnv2':
-                env = CoupledNetsEnv2(args.num_nodes,args.p,args.p,'File',filename = os.path.join(full_dir,f))
-            else:
-                print(f'Environment type {args.env_type} is not supported')
-                exit()
-            eqs,U = get_nash_eqs(env)
-            f_eq = args.nash_eqs_dir + f'eq_{i}.npy'
-            np.save(f_eq,eqs)
-            f_util = args.nash_eqs_dir + f'util_{i}.npy'
-            np.save(f_util,U)
-        toc = time.perf_counter()
+        if args.cascade_type == 'all': casc = Cascade_Types 
+        else: casc = [args.cascade_type]
+        if casc not in Cascade_Types:
+            print(f'Unrecognized Cascade Type in {casc}. Recognized Cascade Types are {Cascade_Types}.')
+        for c in casc:
+            for i,f in enumerate(files):
+                if args.env_type == 'SimpleCascadeEnv':
+                    env = SimpleCascadeEnv(args.num_nodes,args.p,args.p,'File',filename = os.path.join(full_dir,f),cascade_type=c)
+                elif args.env_type == 'CoupledNetsEnv2':
+                    env = CoupledNetsEnv2(args.num_nodes,args.p,args.p,'File',filename = os.path.join(full_dir,f))
+                else:
+                    print(f'Environment type {args.env_type} is not supported')
+                    exit()
+                eqs,U = get_nash_eqs(env)
+                f_eq = args.nash_eqs_dir + f'{c}Casc_eq_{i}.npy'
+                np.save(f_eq,eqs)
+                f_util = args.nash_eqs_dir + f'{c}Casc_util_{i}.npy'
+                np.save(f_util,U)
+            toc = time.perf_counter()
         print(f"Completed in {toc - tic:0.4f} seconds")

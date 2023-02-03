@@ -197,6 +197,8 @@ class Agent(object):
                             exploiter_rewards.append([rew[1][0],rew[2][1]])
                             exploitabilities.append(exploitability)
                         else:
+                            #print(f'Test Env capacity {env.scm.capacity}')
+                            #exit()
                             obs2, reward, done, _ = env.step(action)
                             sum_r = np.array([reward[0]]) if step==0 else np.add(sum_r, reward[0])
                             #print(Q_val[0])
@@ -464,15 +466,19 @@ class TrainableAgent(Agent):
                             obs.append(obs_)
                         rewards.append([rew[0][0],rew[1][0],rew[2][1]])
                     else:
+                        #print(f'Train Env capacity {env.scm.capacity}')
                         obs2, rew, done, info = env.step(action)
-                        #a1 = all_actions.index(sorted(action[0]))
-                        #a2 = all_actions.index(sorted(action[1]))
+                        # all_actions = get_combinatorial_actions(env.net_size,env.num_nodes_attacked) #delete this after debugging
+                        # a1 = all_actions.index(sorted(action[0]) if type(action[0]) == list else action[0])
+                        # a2 = all_actions.index(sorted(action[1]) if type(action[1]) == list else action[1])
+
                         # diff = np.abs(self.utils[env.fid][a1][a2]-rew[0])
                         # if diff > 0:
                         #     print(f'Environment: {env.fid}')
                         #     print(f'Action: {action}')
                         #     print(f'Reward: {rew[0]}')
                         #     print(f'Utility: {self.utils[env.fid][a1][a2]}')
+                        #     exit()
                         rewards.append(rew[0])
                     #oc_bstore = time.perf_counter()
                     #print(f'Time to store experience from start of learn: {toc_bstore-tic}')
